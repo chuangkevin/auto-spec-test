@@ -1,0 +1,30 @@
+schema: spec-driven
+
+context: |
+  Auto Spec Test - 自動化規格測試工具
+  協助 PM/QA 人員上傳規格書，自動產出測試腳本，並以內嵌瀏覽器即時視覺化執行自動化測試，產出測試報告。
+
+  Tech stack:
+    Frontend: Next.js 15 (App Router), React, Tailwind CSS, TypeScript
+    Backend: Node.js, Fastify, TypeScript
+    Database: SQLite (better-sqlite3)
+    AI: Gemini 2.5 Flash (Google Generative AI SDK)
+    Browser Automation: Playwright
+    Monorepo: pnpm workspace (packages/web + packages/server)
+
+  Conventions:
+    - 語系：僅繁體中文
+    - API Key Pool 設計參考 project-bridge (round-robin, 429 retry, usage tracking)
+    - 測試腳本格式為 Agent-Agnostic Markdown（可用於不同 AI Agent）
+    - Conventional commits
+
+rules:
+  proposal:
+    - 保持簡潔，不超過 500 字
+    - 必須包含「範圍外」章節
+  tasks:
+    - 每個任務不超過 2 小時
+    - 包含明確的驗收條件
+  spec:
+    - 所有規格不得包含敏感產品代碼
+    - 資料模型使用 SQLite 語法
