@@ -538,6 +538,7 @@ function GiteaSection() {
               placeholder="https://gitea.example.com"
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
             />
+            <p className="mt-1 text-xs text-gray-400">只需填入根網址，例如 https://gitea.example.com（不要加路徑）</p>
           </div>
 
           <div>

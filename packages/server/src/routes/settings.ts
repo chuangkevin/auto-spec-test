@@ -120,7 +120,36 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
     return settings;
   });
 
-  // Update a setting
+  // Batch update settings
+  fastify.put(
+    '/api/settings',
+    async (
+      request: FastifyRequest<{ Body: Record<string, string> }>,
+      reply
+    ) => {
+      const db = getDb();
+      const body = request.body as Record<string, string>;
+
+      const upsert = db.prepare(
+        `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+      );
+
+      const updateAll = db.transaction(() => {
+        for (const [key, value] of Object.entries(body)) {
+          if (key.includes('api_key')) continue; // skip sensitive keys
+          if (typeof value === 'string' && value.trim()) {
+            upsert.run(key, value.trim());
+          }
+        }
+      });
+
+      updateAll();
+      return { success: true };
+    }
+  );
+
+  // Update a single setting
   fastify.put(
     '/api/settings/:key',
     async (
