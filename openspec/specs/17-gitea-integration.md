@@ -1,3 +1,6 @@
+<!-- status: done -->
+<!-- 已完成：Personal Access Token 連接（全域）、Organization 列表 + Repo 列表、專案綁定 Gitea Repo、在 org 底下建立測試 Issues 專用 Repo、Issue 建立（單個+批次）+ bug label、GiteaPushButton / GiteaBatchPush 元件。注意：實作使用 PAT 而非原 spec 規劃的 OAuth2。 -->
+
 # 功能模組：Gitea 整合
 
 ## 設計概念

@@ -1,3 +1,6 @@
+<!-- status: done -->
+<!-- Phase 1 完成：測試腳本格式規範已實作，AI 產出符合此格式的腳本，支援 Markdown/表單雙模式編輯 -->
+
 # 測試腳本格式規範（Agent-Agnostic）
 
 ## 標準格式

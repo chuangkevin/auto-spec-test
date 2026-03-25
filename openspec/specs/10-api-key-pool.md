@@ -1,3 +1,6 @@
+<!-- status: done -->
+<!-- Phase 1 完成：API Key Pool 批次匯入（project-bridge 風格）、round-robin 輪替、429 重試、用量追蹤、管理介面均已實作 -->
+
 # API Key Pool 管理
 
 參考 project-bridge 的 `geminiKeys.ts` 設計。

@@ -1,3 +1,6 @@
+<!-- status: done -->
+<!-- 已完成：SQLite 資料儲存、所有核心表（users, products, projects, specifications, test_scripts, test_executions, test_results, test_step_logs, page_scans, test_reports, bugs, settings, api_key_usage, audit_logs）+ Phase 2 的 test_runs / test_case_results 表均已建立 -->
+
 # 資料模型（SQLite）
 
 ```sql

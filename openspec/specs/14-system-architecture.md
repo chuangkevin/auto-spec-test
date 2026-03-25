@@ -1,3 +1,6 @@
+<!-- status: done -->
+<!-- 已完成：前後端架構（Next.js + Fastify）、WebSocket、Playwright、SQLite、GeminiKeyPool、AIService、PageScanner、BrowserDriver 等核心模組均已實作。SlackNotifier 待開發。 -->
+
 # 系統架構
 
 ```text

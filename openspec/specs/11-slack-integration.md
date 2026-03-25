@@ -1,3 +1,6 @@
+<!-- status: pending -->
+<!-- 待開發：Slack 整合功能尚未實作 -->
+
 # Slack 整合
 
 ## 通知事件
