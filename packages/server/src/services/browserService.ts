@@ -126,89 +126,54 @@ class BrowserService {
   }>> {
     const { page } = this.getSession(sessionId);
 
-    return await page.evaluate(() => {
-      const interactiveSelectors = 'a, button, input, select, textarea, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [tabindex]';
-      const elements = document.querySelectorAll(interactiveSelectors);
-      const results: Array<{
-        tag: string;
-        type?: string;
-        text?: string;
-        placeholder?: string;
-        selector: string;
-        role?: string;
-        name?: string;
-      }> = [];
-
-      /** 產出穩定的 CSS selector */
-      function buildSelector(el: Element): string {
-        // 優先用 id
-        if (el.id) return `#${CSS.escape(el.id)}`;
-
-        // 嘗試用 data-testid
-        const testId = el.getAttribute('data-testid');
-        if (testId) return `[data-testid="${CSS.escape(testId)}"]`;
-
-        // 嘗試用 name
-        const name = el.getAttribute('name');
-        if (name) return `${el.tagName.toLowerCase()}[name="${CSS.escape(name)}"]`;
-
-        // 嘗試用 aria-label
-        const ariaLabel = el.getAttribute('aria-label');
-        if (ariaLabel) return `${el.tagName.toLowerCase()}[aria-label="${CSS.escape(ariaLabel)}"]`;
-
-        // 往上找路徑
-        const parts: string[] = [];
-        let current: Element | null = el;
-        while (current && current !== document.body) {
-          let tag = current.tagName.toLowerCase();
-          if (current.id) {
-            parts.unshift(`#${CSS.escape(current.id)}`);
-            break;
-          }
-          const parent: Element | null = current.parentElement;
+    // Use string evaluation to avoid esbuild __name injection in page context
+    return await page.evaluate(`(() => {
+      var selectors = 'a, button, input, select, textarea, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [tabindex]';
+      var elements = document.querySelectorAll(selectors);
+      var results = [];
+      var buildSelector = function(el) {
+        if (el.id) return '#' + CSS.escape(el.id);
+        var testId = el.getAttribute('data-testid');
+        if (testId) return '[data-testid="' + CSS.escape(testId) + '"]';
+        var nm = el.getAttribute('name');
+        if (nm) return el.tagName.toLowerCase() + '[name="' + CSS.escape(nm) + '"]';
+        var aria = el.getAttribute('aria-label');
+        if (aria) return el.tagName.toLowerCase() + '[aria-label="' + CSS.escape(aria) + '"]';
+        var parts = [];
+        var cur = el;
+        while (cur && cur !== document.body) {
+          var tag = cur.tagName.toLowerCase();
+          if (cur.id) { parts.unshift('#' + CSS.escape(cur.id)); break; }
+          var parent = cur.parentElement;
           if (parent) {
-            const currentTag = current.tagName;
-            const siblings = Array.from(parent.children).filter(
-              (c: Element) => c.tagName === currentTag
-            );
-            if (siblings.length > 1) {
-              const idx = siblings.indexOf(current) + 1;
-              tag += `:nth-of-type(${idx})`;
-            }
+            var curTag = cur.tagName;
+            var siblings = Array.from(parent.children).filter(function(c) { return c.tagName === curTag; });
+            if (siblings.length > 1) { tag += ':nth-of-type(' + (siblings.indexOf(cur) + 1) + ')'; }
           }
           parts.unshift(tag);
-          current = parent;
+          cur = parent;
         }
         return parts.join(' > ');
-      }
-
-      elements.forEach((el) => {
-        // 跳過隱藏元素
-        const rect = el.getBoundingClientRect();
+      };
+      elements.forEach(function(el) {
+        var rect = el.getBoundingClientRect();
         if (rect.width === 0 && rect.height === 0) return;
-        const style = getComputedStyle(el);
+        var style = getComputedStyle(el);
         if (style.display === 'none' || style.visibility === 'hidden') return;
-
-        const tag = el.tagName.toLowerCase();
-        const text = (el.textContent || '').trim().slice(0, 100);
-        const placeholder = el.getAttribute('placeholder') || undefined;
-        const type = el.getAttribute('type') || undefined;
-        const role = el.getAttribute('role') || undefined;
-        const name = el.getAttribute('aria-label') || el.getAttribute('name') || undefined;
-
+        var tag = el.tagName.toLowerCase();
+        var text = (el.textContent || '').trim().slice(0, 100);
         results.push({
-          tag,
-          type,
+          tag: tag,
+          type: el.getAttribute('type') || undefined,
           text: text || undefined,
-          placeholder,
+          placeholder: el.getAttribute('placeholder') || undefined,
           selector: buildSelector(el),
-          role,
-          name,
+          role: el.getAttribute('role') || undefined,
+          name: el.getAttribute('aria-label') || el.getAttribute('name') || undefined
         });
       });
-
       return results;
-    });
+    })()`) as any;
   }
 
   /** 關閉 session */
