@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   Home,
   FolderKanban,
+  Package,
   Globe,
   Archive,
   History,
@@ -19,6 +20,7 @@ import { useAuth } from '@/lib/auth';
 const navItems = [
   { href: '/', label: '首頁', icon: Home },
   { href: '/projects', label: '測試專案', icon: FolderKanban },
+  { href: '/products', label: '產品管理', icon: Package },
   { href: '/url-test', label: 'URL 快速測試', icon: Globe },
   { href: '/specifications', label: '規格書庫', icon: Archive },
   { href: '/history', label: '測試記錄', icon: History },
