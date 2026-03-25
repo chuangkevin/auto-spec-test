@@ -1,6 +1,16 @@
 import { getGeminiApiKey, getGeminiApiKeyExcluding, getGeminiModel, trackUsage } from './geminiKeys.js';
 
 const MAX_RETRIES = 2;
+
+/** 清理 Gemini 回傳的文字，去除 markdown code fence 等 */
+function cleanJsonText(text: string): string {
+  let cleaned = text.trim();
+  // 去除 ```json ... ``` 包裝
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+  }
+  return cleaned.trim();
+}
 const RETRY_DELAY_MS = 3000;
 
 interface ComponentInfo {
@@ -72,8 +82,7 @@ async function callGeminiVision(
         ],
         generationConfig: {
           temperature: 0.2,
-          maxOutputTokens: 8192,
-          responseMimeType: 'application/json',
+          maxOutputTokens: 16384,
         },
       };
 
@@ -166,12 +175,13 @@ ${specContent.slice(0, 5000)}
     }
 
     prompt += `## 要求
-1. 識別頁面上的主要元件（表單、導航、按鈕等）
-2. 為每個重要功能產出測試案例
-3. 每個測試案例需要具體的操作步驟
+1. 識別頁面上的主要元件（表單、導航、按鈕等），最多列出 10 個
+2. 為每個重要功能產出測試案例，最多 8 個測試案例
+3. 每個測試案例最多 5 個步驟
 4. 使用頁面上實際的 CSS selector
 5. 測試案例 ID 格式：TC-001, TC-002...
 6. priority 依據功能重要性決定
+7. 只回傳純 JSON，不要包含 markdown code fence
 
 ## 回傳格式
 回傳 JSON，格式如下：
@@ -196,7 +206,7 @@ ${specContent.slice(0, 5000)}
     const text = await callGeminiVision(prompt, screenshotBase64, 'page_scan');
 
     try {
-      const result = JSON.parse(text);
+      const result = JSON.parse(cleanJsonText(text));
       return {
         components: result.components || [],
         testPlan: result.testPlan || [],
@@ -236,7 +246,7 @@ ${specContent.slice(0, 5000)}
     const text = await callGeminiVision(prompt, screenshotBase64, 'test_evaluate');
 
     try {
-      const result = JSON.parse(text);
+      const result = JSON.parse(cleanJsonText(text));
       return {
         passed: !!result.passed,
         actualResult: result.actualResult || '無法判斷',
