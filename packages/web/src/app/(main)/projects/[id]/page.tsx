@@ -360,14 +360,20 @@ export default function ProjectDetailPage() {
 
   const fetchProject = useCallback(async () => {
     try {
-      const data = await api.get<{
-        project: Project;
-        specification?: Specification;
-        test_script?: TestScript;
-      }>(`/api/projects/${projectId}`);
-      setProject(data.project);
-      setSpec(data.specification ?? null);
-      setTestScript(data.test_script ?? null);
+      const projectData = await api.get<Project>(`/api/projects/${projectId}`);
+      setProject(projectData);
+
+      // Fetch latest spec
+      try {
+        const specs = await api.get<Specification[]>(`/api/projects/${projectId}/specifications`);
+        if (specs.length > 0) setSpec(specs[0]);
+      } catch { /* no specs yet */ }
+
+      // Fetch latest test script
+      try {
+        const script = await api.get<TestScript>(`/api/projects/${projectId}/test-scripts/latest`);
+        setTestScript(script);
+      } catch { /* no scripts yet */ }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '載入失敗');
     } finally {
