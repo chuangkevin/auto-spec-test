@@ -1,2 +1,33 @@
 # 原始需求文件（含敏感資訊，禁止外流）
 original.md
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.next/
+out/
+
+# Environment
+.env
+.env.local
+
+# Data & uploads
+packages/server/data/
+packages/server/uploads/
+packages/server/screenshots/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test
+coverage/

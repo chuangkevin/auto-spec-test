@@ -1,0 +1,16 @@
+{
+  "name": "auto-spec-test",
+  "private": true,
+  "scripts": {
+    "dev:server": "pnpm --filter server dev",
+    "dev:web": "pnpm --filter web dev",
+    "dev": "concurrently \"pnpm dev:server\" \"pnpm dev:web\"",
+    "build": "pnpm --filter server build && pnpm --filter web build",
+    "test": "pnpm --filter server test",
+    "test:e2e": "pnpm --filter server test:e2e"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3"
+  }
+}
