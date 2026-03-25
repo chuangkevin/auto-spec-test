@@ -5,6 +5,7 @@ import {
   removeApiKey,
   getUsageStats,
   isValidKeyFormat,
+  invalidateKeyCache,
 } from '../services/geminiKeys.js';
 import { getDb } from '../db/connection.js';
 
@@ -13,7 +14,17 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
   fastify.get('/api/settings/api-keys', async () => {
     const keys = getKeyList();
     const usage = getUsageStats();
-    return { keys, usage };
+    return {
+      keys: keys.map(k => ({
+        suffix: k.suffix,
+        todayCalls: k.todayCalls,
+        todayTokens: k.todayTokens,
+        totalCalls: k.totalCalls,
+        totalTokens: k.totalTokens,
+        fromEnv: k.fromEnv,
+      })),
+      usage,
+    };
   });
 
   // Add a new API key
@@ -34,6 +45,38 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       } catch (err: any) {
         return reply.status(400).send({ error: err.message });
       }
+    }
+  );
+
+  // Batch import API keys from multi-line text
+  fastify.post(
+    '/api/settings/api-keys/batch',
+    async (request: FastifyRequest<{ Body: { text: string } }>, reply) => {
+      const { text } = request.body as any;
+      if (!text || typeof text !== 'string') {
+        return reply.status(400).send({ error: 'Missing text field' });
+      }
+
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const added: string[] = [];
+      const skipped: string[] = [];
+
+      for (const line of lines) {
+        // Skip label lines (start with -)
+        if (line.startsWith('-')) continue;
+        // Only accept lines that look like Gemini keys
+        if (line.startsWith('AIza') && line.length >= 30) {
+          try {
+            addApiKey(line);
+            added.push('...' + line.slice(-4));
+          } catch {
+            skipped.push('...' + line.slice(-4));
+          }
+        }
+      }
+
+      const keys = getKeyList();
+      return { keys, added, skipped, totalAdded: added.length };
     }
   );
 
