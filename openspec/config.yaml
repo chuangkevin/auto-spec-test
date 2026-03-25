@@ -2,7 +2,11 @@ schema: spec-driven
 
 context: |
   Auto Spec Test - 自動化規格測試工具
-  協助 PM/QA 人員上傳規格書，自動產出測試腳本，並以內嵌瀏覽器即時視覺化執行自動化測試，產出測試報告。
+  協助 PM/QA 人員進行系統測試的自動化工具，支援兩種模式：
+  1. 規格驅動測試：上傳規格書，AI 產出測試腳本後執行
+  2. URL 探索測試：貼上網址，AI 自動掃描頁面元件、規劃測試流程並執行
+
+  所有測試皆透過內嵌瀏覽器即時視覺化呈現，使用者可全程觀看、隨時介入控制。
 
   Tech stack:
     Frontend: Next.js 15 (App Router), React, Tailwind CSS, TypeScript

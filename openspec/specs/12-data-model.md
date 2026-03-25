@@ -66,13 +66,15 @@ CREATE TABLE test_executions (
   execution_mode TEXT NOT NULL DEFAULT 'auto',  -- 'auto' | 'step_by_step'
   browser_width INTEGER DEFAULT 1280,
   browser_height INTEGER DEFAULT 720,
-  status TEXT NOT NULL DEFAULT 'queued',  -- 'queued' | 'running' | 'paused' | 'completed' | 'cancelled' | 'failed'
+  status TEXT NOT NULL DEFAULT 'queued',  -- 'queued' | 'running' | 'paused' | 'manual' | 'completed' | 'cancelled' | 'failed'
   progress INTEGER DEFAULT 0,
   current_case_id TEXT,
+  selected_cases TEXT,                    -- JSON array: 使用者勾選的案例 ID
+  case_order TEXT,                        -- JSON array: 使用者排定的執行順序
   started_at TEXT,
   completed_at TEXT,
   executed_by INTEGER REFERENCES users(id),
-  source TEXT NOT NULL DEFAULT 'project',  -- 'project' | 'system_test'
+  source TEXT NOT NULL DEFAULT 'project',  -- 'project' | 'url_quick_test'
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -87,6 +89,8 @@ CREATE TABLE test_results (
   screenshot_path TEXT,
   error_detail TEXT,
   execution_time_ms INTEGER,
+  sort_order INTEGER,                     -- 實際執行順序
+  is_manual_added INTEGER DEFAULT 0,      -- 是否為使用者手動新增的案例
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -101,7 +105,21 @@ CREATE TABLE test_step_logs (
   ai_reasoning TEXT,
   screenshot_path TEXT,
   status TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'success' | 'fail'
+  is_manual INTEGER DEFAULT 0,            -- 是否為手動介入時的操作
   duration_ms INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- 頁面掃描結果（URL 快速測試用）
+CREATE TABLE page_scans (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  execution_id INTEGER REFERENCES test_executions(id) ON DELETE CASCADE,
+  target_url TEXT NOT NULL,
+  screenshot_path TEXT,
+  dom_snapshot TEXT,                       -- 精簡版 DOM 結構
+  components_json TEXT,                    -- AI 辨識的元件清單 JSON
+  generated_cases_json TEXT,               -- AI 產出的測試案例清單 JSON
+  spec_files TEXT,                         -- 附加的規格書 JSON array（若有）
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -147,7 +165,7 @@ CREATE TABLE api_key_usage (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   api_key_suffix TEXT NOT NULL,
   model TEXT NOT NULL,
-  call_type TEXT NOT NULL,  -- 'spec_parse' | 'script_generate' | 'test_execute' | 'report_generate'
+  call_type TEXT NOT NULL,  -- 'spec_parse' | 'script_generate' | 'page_scan' | 'test_execute' | 'report_generate'
   prompt_tokens INTEGER DEFAULT 0,
   completion_tokens INTEGER DEFAULT 0,
   total_tokens INTEGER DEFAULT 0,
