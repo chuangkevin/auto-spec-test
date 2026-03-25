@@ -202,17 +202,7 @@ export default function TestExecutionPanel({
       setSessionId(res.sessionId);
       connectWs(res.sessionId);
 
-      // Trigger scan
-      const scanRes = await api.post<{
-        components: Component[];
-        testPlan: TestCase[];
-      }>(`/api/test-runner/${res.sessionId}/scan`, { url: url.trim() });
-
-      setComponents(scanRes.components);
-      setTestCases(scanRes.testPlan.map((tc) => ({ ...tc, selected: true })));
-      setStatus('ready');
-
-      // Fetch initial screenshot
+      // Fetch initial screenshot before scan
       try {
         const ssRes = await api.get<{ screenshot: string; pageInfo: PageInfo }>(
           `/api/test-runner/${res.sessionId}/screenshot`,
@@ -222,6 +212,16 @@ export default function TestExecutionPanel({
       } catch {
         // not critical
       }
+
+      // Trigger scan
+      const scanRes = await api.post<{
+        components: Component[];
+        testPlan: TestCase[];
+      }>(`/api/test-runner/${res.sessionId}/scan`, { url: url.trim() });
+
+      setComponents(scanRes.components);
+      setTestCases(scanRes.testPlan.map((tc) => ({ ...tc, selected: true })));
+      setStatus('ready');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '掃描失敗');
       setStatus('idle');
