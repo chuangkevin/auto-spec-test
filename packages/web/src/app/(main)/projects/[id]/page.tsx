@@ -15,6 +15,7 @@ import {
   ChevronUp,
   Check,
   Settings,
+  Plus,
 } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
@@ -55,13 +56,63 @@ interface GiteaOrg {
 interface GiteaRepo {
   full_name: string;
   name: string;
-  description: string;
+  description?: string;
 }
 
 interface GiteaProject {
   id: number;
   title: string;
   description: string;
+}
+
+// --- 建立 Repo 內嵌元件 ---
+
+function CreateRepoInline({ org, onCreated }: { org: string; onCreated: (repo: { full_name: string; name: string }) => void }) {
+  const [repoName, setRepoName] = useState('test-issues');
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleCreate = async () => {
+    if (!repoName.trim()) return;
+    setCreating(true);
+    setError('');
+    try {
+      const res = await api.post<{ full_name: string; name: string; html_url: string }>(
+        `/api/gitea/orgs/${encodeURIComponent(org)}/repos`,
+        { name: repoName.trim(), description: '測試 Issues 專用 Repository（Auto Spec Test 建立）' }
+      );
+      onCreated({ full_name: res.full_name, name: res.name });
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '建立失敗');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <div className="rounded-md border border-dashed border-yellow-300 bg-yellow-50 p-3 space-y-2">
+      <p className="text-sm text-yellow-700">此 Organization 尚無 Repository，需要建立一個來存放測試 Issues。</p>
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={repoName}
+          onChange={(e) => setRepoName(e.target.value)}
+          placeholder="Repository 名稱"
+          className="flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+        />
+        <button
+          type="button"
+          onClick={handleCreate}
+          disabled={creating || !repoName.trim()}
+          className="inline-flex items-center gap-1.5 rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+        >
+          {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+          建立
+        </button>
+      </div>
+      {error && <p className="text-xs text-red-600">{error}</p>}
+    </div>
+  );
 }
 
 // --- Gitea 設定區塊 ---
@@ -260,6 +311,11 @@ function GiteaSettingsSection({
                       <Loader2 size={14} className="animate-spin" />
                       載入中...
                     </div>
+                  ) : repos.length === 0 ? (
+                    <CreateRepoInline org={selectedOrg} onCreated={(repo) => {
+                      setRepos([repo]);
+                      setSelectedRepo(repo.full_name);
+                    }} />
                   ) : (
                     <select
                       id="gitea-repo-select"
@@ -292,7 +348,7 @@ function GiteaSettingsSection({
                       載入中...
                     </div>
                   ) : projects.length === 0 ? (
-                    <p className="text-sm text-gray-400">此 Organization 尚無 Project Board</p>
+                    <p className="text-sm text-gray-400">Org-level Project Board 需在 Gitea Web UI 手動管理</p>
                   ) : (
                     <select
                       id="gitea-project-select"

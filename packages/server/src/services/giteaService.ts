@@ -112,6 +112,28 @@ export class GiteaService {
     }
   }
 
+  /** 在 organization 底下建立 repo */
+  async createOrgRepo(
+    org: string,
+    name: string,
+    description?: string,
+  ): Promise<{ full_name: string; name: string; html_url: string }> {
+    return this.request('POST', `/orgs/${encodeURIComponent(org)}/repos`, {
+      name,
+      description: description || '由 Auto Spec Test 建立的測試 Issues 專用 Repository',
+      private: false,
+      auto_init: true,
+      default_branch: 'main',
+      has_issues: true,
+      has_projects: true,
+    });
+  }
+
+  /** 取得所有使用者有權限的 repos（含各 org 的） */
+  async listAllRepos(page = 1, limit = 50): Promise<Array<{ full_name: string; name: string; description: string; owner: { login: string } }>> {
+    return this.request('GET', `/user/repos?page=${page}&limit=${limit}`);
+  }
+
   /** 確保 "bug" label 存在，回傳 label id */
   async ensureBugLabel(owner: string, repo: string): Promise<number> {
     const labels = await this.request<Array<{ id: number; name: string }>>(

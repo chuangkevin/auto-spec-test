@@ -179,6 +179,57 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
     }
   });
 
+  /** POST /api/gitea/orgs/:org/repos — 在 org 底下建立 repo */
+  fastify.post<{
+    Params: { org: string };
+    Body: { name: string; description?: string };
+  }>('/api/gitea/orgs/:org/repos', async (request, reply) => {
+    const userId = (request as any).user?.id;
+    if (!userId) {
+      return reply.status(401).send({ error: 'Unauthorized' });
+    }
+
+    const { org } = request.params;
+    const { name, description } = request.body as any;
+
+    if (!name || !name.trim()) {
+      return reply.status(400).send({ error: '請輸入 Repository 名稱' });
+    }
+
+    try {
+      const gitea = createGiteaService(userId);
+      const repo = await gitea.createOrgRepo(org, name.trim(), description);
+      return reply.status(201).send({
+        full_name: repo.full_name,
+        name: repo.name,
+        html_url: repo.html_url,
+      });
+    } catch (err: any) {
+      return reply.status(502).send({ error: err.message });
+    }
+  });
+
+  /** GET /api/gitea/repos/all — 列出使用者所有有權限的 repos */
+  fastify.get('/api/gitea/repos/all', async (request, reply) => {
+    const userId = (request as any).user?.id;
+    if (!userId) {
+      return reply.status(401).send({ error: 'Unauthorized' });
+    }
+
+    try {
+      const gitea = createGiteaService(userId);
+      const repos = await gitea.listAllRepos();
+      return repos.map((r) => ({
+        full_name: r.full_name,
+        name: r.name,
+        description: r.description,
+        owner: r.owner?.login,
+      }));
+    } catch (err: any) {
+      return reply.status(502).send({ error: err.message });
+    }
+  });
+
   /** GET /api/gitea/orgs/:org/members — 列出 org 成員 */
   fastify.get<{
     Params: { org: string };
