@@ -45,6 +45,7 @@ type SessionStatus =
 export interface TestExecutionPanelProps {
   projectId: number;
   specContent?: string;
+  initialUrl?: string;
 }
 
 /* -------- Helpers -------- */
@@ -65,8 +66,9 @@ function wsBaseUrl(): string {
 export default function TestExecutionPanel({
   projectId,
   specContent,
+  initialUrl,
 }: TestExecutionPanelProps) {
-  const [url, setUrl] = useState('');
+  const [url, setUrl] = useState(initialUrl || '');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [screenshot, setScreenshot] = useState<string | null>(null);
   const [status, setStatus] = useState<SessionStatus>('idle');

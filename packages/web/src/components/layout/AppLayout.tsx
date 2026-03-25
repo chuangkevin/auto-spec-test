@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Home,
+  Globe,
   FolderKanban,
   Package,
   Settings,
@@ -16,6 +17,7 @@ import { useAuth } from '@/lib/auth';
 
 const navItems = [
   { href: '/', label: '首頁', icon: Home },
+  { href: '/quick-test', label: '快速測試', icon: Globe },
   { href: '/projects', label: '測試專案', icon: FolderKanban },
   { href: '/products', label: '產品管理', icon: Package },
   { href: '/settings', label: '系統設定', icon: Settings },
