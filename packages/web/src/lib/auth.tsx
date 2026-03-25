@@ -15,7 +15,8 @@ interface AuthContextValue {
   user: User | null;
   token: string | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  selectUser: (userId: number) => Promise<void>;
+  registerUser: (username: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -36,9 +37,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(savedToken);
 
     api
-      .get<User>('/api/auth/me')
-      .then((u) => {
-        setUser(u);
+      .get<{ user: User }>('/api/auth/me')
+      .then((res) => {
+        setUser(res.user);
       })
       .catch(() => {
         localStorage.removeItem('token');
@@ -49,10 +50,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
   }, []);
 
-  const login = useCallback(async (username: string, password: string) => {
+  const selectUser = useCallback(async (userId: number) => {
     const res = await api.post<{ token: string; user: User }>(
-      '/api/auth/login',
-      { username, password },
+      '/api/auth/select',
+      { userId },
+    );
+    localStorage.setItem('token', res.token);
+    setToken(res.token);
+    setUser(res.user);
+  }, []);
+
+  const registerUser = useCallback(async (username: string) => {
+    const res = await api.post<{ token: string; user: User }>(
+      '/api/auth/register',
+      { username },
     );
     localStorage.setItem('token', res.token);
     setToken(res.token);
@@ -67,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, token, loading, selectUser, registerUser, logout }}>
       {children}
     </AuthContext.Provider>
   );
