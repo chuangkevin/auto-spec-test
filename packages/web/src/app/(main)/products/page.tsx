@@ -128,7 +128,11 @@ export default function ProductsPage() {
                   className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-50 transition-colors"
                   title="刪除產品"
                 >
-                  <Trash2 size={16} />
+                  {deleting === product.id ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Trash2 size={16} />
+                  )}
                 </button>
               </div>
               {product.description && (

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { Upload, X, FileText, Loader2 } from 'lucide-react';
+import { BASE_URL } from '@/lib/api';
 
 const ACCEPTED_TYPES = ['.md', '.docx', '.xls', '.xlsx', '.csv'];
 
@@ -82,7 +83,7 @@ export default function SpecUploader({ projectId, onUploadComplete }: SpecUpload
 
         xhr.addEventListener('error', () => reject(new Error('網路錯誤')));
 
-        xhr.open('POST', `http://localhost:3001/api/projects/${projectId}/specifications/upload`);
+        xhr.open('POST', `${BASE_URL}/api/projects/${projectId}/specifications/upload`);
         if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
         xhr.send(formData);
       });

@@ -1,4 +1,4 @@
-const BASE_URL = 'http://localhost:3001';
+export const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 async function request<T>(
   method: string,
@@ -25,7 +25,10 @@ async function request<T>(
   if (res.status === 401) {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      // Avoid infinite redirect loop: don't redirect if already on /login
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login';
+      }
     }
     throw new Error('Unauthorized');
   }
@@ -35,7 +38,17 @@ async function request<T>(
     throw new Error(error.message || `Request failed: ${res.status}`);
   }
 
-  return res.json();
+  // Handle empty responses (204 No Content, etc.)
+  const text = await res.text();
+  if (!text) {
+    return undefined as T;
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error('Invalid JSON response from server');
+  }
 }
 
 export const api = {

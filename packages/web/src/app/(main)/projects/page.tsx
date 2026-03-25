@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { Plus, Search, FolderKanban } from 'lucide-react';
+import { Plus, Search, FolderKanban, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Project, Product } from '@/types';
 
@@ -35,27 +35,41 @@ export default function ProjectsPage() {
   const [filterProduct, setFilterProduct] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [searchText, setSearchText] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
+  // Debounce search input
   useEffect(() => {
-    Promise.all([
-      api.get<Project[]>('/api/projects'),
-      api.get<Product[]>('/api/products'),
-    ])
-      .then(([proj, prod]) => {
-        setProjects(proj);
-        setProducts(prod);
-      })
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchText);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchText]);
+
+  const fetchProjects = useCallback(() => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (filterProduct) params.set('product_id', filterProduct);
+    if (filterStatus) params.set('status', filterStatus);
+    if (debouncedSearch) params.set('search', debouncedSearch);
+    const qs = params.toString();
+    const url = `/api/projects${qs ? `?${qs}` : ''}`;
+
+    api
+      .get<Project[]>(url)
+      .then(setProjects)
       .catch(() => {})
       .finally(() => setLoading(false));
+  }, [filterProduct, filterStatus, debouncedSearch]);
+
+  // Load products once
+  useEffect(() => {
+    api.get<Product[]>('/api/products').then(setProducts).catch(() => {});
   }, []);
 
-  const filtered = projects.filter((p) => {
-    if (filterProduct && String(p.product_id) !== filterProduct) return false;
-    if (filterStatus && p.status !== filterStatus) return false;
-    if (searchText && !p.name.toLowerCase().includes(searchText.toLowerCase()))
-      return false;
-    return true;
-  });
+  // Fetch projects when filters change
+  useEffect(() => {
+    fetchProjects();
+  }, [fetchProjects]);
 
   return (
     <div>
@@ -115,8 +129,11 @@ export default function ProjectsPage() {
 
       {/* Table */}
       {loading ? (
-        <p className="py-12 text-center text-gray-500">載入中...</p>
-      ) : filtered.length === 0 ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 size={24} className="animate-spin text-gray-400" />
+          <span className="ml-2 text-gray-500">載入中...</span>
+        </div>
+      ) : projects.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white py-16">
           <FolderKanban size={40} className="mb-3 text-gray-300" />
           <p className="mb-1 text-gray-500">尚無專案</p>
@@ -144,7 +161,7 @@ export default function ProjectsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filtered.map((project) => {
+              {projects.map((project) => {
                 const product = products.find(
                   (p) => p.id === project.product_id,
                 );

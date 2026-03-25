@@ -15,6 +15,7 @@ import { api } from '@/lib/api';
 import type { Project, Specification, TestScript } from '@/types';
 import SpecUploader from '@/components/SpecUploader';
 import OutlinePreview from '@/components/OutlinePreview';
+import ScriptEditor from '@/components/ScriptEditor';
 
 const STATUS_LABELS: Record<Project['status'], string> = {
   draft: '草稿',
@@ -210,7 +211,7 @@ export default function ProjectDetailPage() {
           <NoScriptGuard hasScript={hasScript}>
             <div className="rounded-md border border-gray-200 bg-white p-8 text-center text-gray-500">
               <Play size={32} className="mx-auto mb-3 text-gray-300" />
-              <p>測試執行功能開發中</p>
+              <p>Phase 2 即將推出</p>
             </div>
           </NoScriptGuard>
         )}
@@ -219,7 +220,7 @@ export default function ProjectDetailPage() {
           <NoScriptGuard hasScript={hasScript}>
             <div className="rounded-md border border-gray-200 bg-white p-8 text-center text-gray-500">
               <ClipboardList size={32} className="mx-auto mb-3 text-gray-300" />
-              <p>測試報告功能開發中</p>
+              <p>Phase 2 即將推出</p>
             </div>
           </NoScriptGuard>
         )}
@@ -355,26 +356,20 @@ function Tab1Content({
           outlineMd={spec.parsed_outline_md || ''}
           onOutlineChange={onOutlineChange}
           onConfirmOutline={onConfirmOutline}
+          confirming={generating}
         />
       </div>
     );
   }
 
-  // Stage 4: Script generated
+  // Stage 4: Script generated — use ScriptEditor for full editing
   if (specStage === 'done' && testScript) {
     return (
-      <div className="space-y-4">
-        <div className="rounded-md border border-green-200 bg-green-50 p-3">
-          <p className="text-sm font-medium text-green-800">
-            測試腳本已產出（版本 {testScript.version}）
-          </p>
-        </div>
-        <div className="rounded-md border border-gray-200 bg-white p-6">
-          <pre className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800 font-sans">
-            {testScript.content_md}
-          </pre>
-        </div>
-      </div>
+      <ScriptEditor
+        projectId={projectId}
+        scriptId={testScript.id}
+        initialContent={testScript.content_md}
+      />
     );
   }
 

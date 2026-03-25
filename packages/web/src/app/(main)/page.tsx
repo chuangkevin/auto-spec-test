@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   Plus,
-  Globe,
   FolderKanban,
   Package,
   ArrowRight,
@@ -30,8 +29,10 @@ const statusColor: Record<string, string> = {
 export default function DashboardPage() {
   const { user } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
+  const [projectCount, setProjectCount] = useState(0);
   const [productCount, setProductCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -39,10 +40,15 @@ export default function DashboardPage() {
       api.get<Product[]>('/api/products'),
     ])
       .then(([proj, prod]) => {
-        setProjects(proj.slice(0, 5));
-        setProductCount(prod.length);
+        const projArr = Array.isArray(proj) ? proj : [];
+        const prodArr = Array.isArray(prod) ? prod : [];
+        setProjectCount(projArr.length);
+        setProjects(projArr.slice(0, 5));
+        setProductCount(prodArr.length);
       })
-      .catch(() => {})
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : '載入資料失敗');
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -51,6 +57,12 @@ export default function DashboardPage() {
       <h1 className="mb-6 text-2xl font-bold text-gray-800">
         歡迎回來，{user?.username}
       </h1>
+
+      {error && (
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       {/* Stats */}
       <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -62,7 +74,7 @@ export default function DashboardPage() {
             <div>
               <p className="text-sm text-gray-500">專案數量</p>
               <p className="text-2xl font-bold text-gray-800">
-                {loading ? '-' : projects.length}
+                {loading ? '-' : projectCount}
               </p>
             </div>
           </div>
@@ -94,17 +106,13 @@ export default function DashboardPage() {
             <Plus size={16} />
             新建專案
           </Link>
-          <button
-            type="button"
-            disabled
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-400 cursor-not-allowed"
+          <Link
+            href="/products"
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
           >
-            <Globe size={16} />
-            URL 快速測試
-            <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-400">
-              即將推出
-            </span>
-          </button>
+            <Package size={16} />
+            管理產品
+          </Link>
         </div>
       </section>
 

@@ -10,6 +10,7 @@ interface OutlinePreviewProps {
   outlineMd: string;
   onOutlineChange: (md: string) => void;
   onConfirmOutline: () => void;
+  confirming?: boolean;
 }
 
 export default function OutlinePreview({
@@ -18,6 +19,7 @@ export default function OutlinePreview({
   outlineMd,
   onOutlineChange,
   onConfirmOutline,
+  confirming = false,
 }: OutlinePreviewProps) {
   const [mode, setMode] = useState<'preview' | 'edit'>('preview');
   const [draft, setDraft] = useState(outlineMd);
@@ -128,10 +130,15 @@ export default function OutlinePreview({
         {/* Confirm outline */}
         <button
           onClick={onConfirmOutline}
-          className="ml-auto inline-flex items-center gap-1 rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+          disabled={confirming}
+          className="ml-auto inline-flex items-center gap-1 rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
-          <Check size={14} />
-          確認大綱，產出測試腳本
+          {confirming ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <Check size={14} />
+          )}
+          {confirming ? '產出中...' : '確認大綱，產出測試腳本'}
         </button>
       </div>
 
