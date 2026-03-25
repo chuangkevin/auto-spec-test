@@ -21,12 +21,15 @@ import specificationRoutes from './routes/specifications.js';
 import testScriptRoutes from './routes/testScripts.js';
 import settingsRoutes from './routes/settings.js';
 import giteaRoutes from './routes/gitea.js';
+import testRunnerRoutes from './routes/testRunner.js';
+import wsRoutes from './routes/ws.js';
+import { browserService } from './services/browserService.js';
 
 // 2. 建立 Fastify 實例
 const app = Fastify({ logger: true });
 
 // 不需要認證的路徑
-const PUBLIC_PATHS = ['/api/auth/users', '/api/auth/select', '/api/auth/register', '/api/health'];
+const PUBLIC_PATHS = ['/api/auth/users', '/api/auth/select', '/api/auth/register', '/api/health', '/ws/test/'];
 
 async function start(): Promise<void> {
   // 3. 註冊 plugins
@@ -43,7 +46,7 @@ async function start(): Promise<void> {
 
   // 6. 註冊全域認證 middleware（排除公開路徑）
   app.addHook('onRequest', async (request, reply) => {
-    if (PUBLIC_PATHS.some((p) => request.url === p || request.url.startsWith(p + '?'))) {
+    if (PUBLIC_PATHS.some((p) => request.url === p || request.url.startsWith(p + '?') || (p.endsWith('/') && request.url.startsWith(p)))) {
       return;
     }
     await authHook(request, reply);
@@ -57,6 +60,8 @@ async function start(): Promise<void> {
   await app.register(testScriptRoutes);
   await app.register(settingsRoutes);
   await app.register(giteaRoutes);
+  await app.register(testRunnerRoutes);
+  await app.register(wsRoutes);
 
   // 8. Health check
   app.get('/api/health', async () => {
@@ -69,6 +74,16 @@ async function start(): Promise<void> {
 
   await app.listen({ port, host });
   console.log(`Server listening on http://${host}:${port}`);
+
+  // 10. Graceful shutdown
+  const shutdown = async () => {
+    console.log('Shutting down...');
+    await browserService.shutdown();
+    await app.close();
+    process.exit(0);
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 }
 
 start().catch((err) => {

@@ -16,6 +16,11 @@ import {
   Check,
   Settings,
   Plus,
+  Download,
+  CheckCircle2,
+  XCircle,
+  SkipForward,
+  Image as ImageIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
@@ -23,6 +28,7 @@ import type { Project, Specification, TestScript } from '@/types';
 import SpecUploader from '@/components/SpecUploader';
 import OutlinePreview from '@/components/OutlinePreview';
 import ScriptEditor from '@/components/ScriptEditor';
+import TestExecutionPanel from '@/components/TestExecutionPanel';
 
 const STATUS_LABELS: Record<Project['status'], string> = {
   draft: '草稿',
@@ -468,8 +474,6 @@ export default function ProjectDetailPage() {
     }
   };
 
-  const hasScript = !!testScript;
-
   // Tab definitions
   const tabs: { key: Tab; label: string; icon: React.ElementType }[] = [
     { key: 'scripts', label: '測試腳本', icon: FileText },
@@ -591,21 +595,14 @@ export default function ProjectDetailPage() {
         )}
 
         {activeTab === 'testing' && (
-          <NoScriptGuard hasScript={hasScript}>
-            <div className="rounded-md border border-gray-200 bg-white p-8 text-center text-gray-500">
-              <Play size={32} className="mx-auto mb-3 text-gray-300" />
-              <p>Phase 2 即將推出</p>
-            </div>
-          </NoScriptGuard>
+          <TestExecutionPanel
+            projectId={projectId}
+            specContent={spec?.parsed_outline_md ?? undefined}
+          />
         )}
 
         {activeTab === 'reports' && (
-          <NoScriptGuard hasScript={hasScript}>
-            <div className="rounded-md border border-gray-200 bg-white p-8 text-center text-gray-500">
-              <ClipboardList size={32} className="mx-auto mb-3 text-gray-300" />
-              <p>Phase 2 即將推出</p>
-            </div>
-          </NoScriptGuard>
+          <TestReportTab projectId={projectId} />
         )}
       </div>
     </div>
@@ -613,26 +610,6 @@ export default function ProjectDetailPage() {
 }
 
 /* ---------- Sub-components ---------- */
-
-function NoScriptGuard({
-  hasScript,
-  children,
-}: {
-  hasScript: boolean;
-  children: React.ReactNode;
-}) {
-  if (!hasScript) {
-    return (
-      <div className="rounded-md border border-yellow-200 bg-yellow-50 p-8 text-center">
-        <AlertCircle size={28} className="mx-auto mb-2 text-yellow-500" />
-        <p className="text-sm font-medium text-yellow-800">
-          請先在「測試腳本」分頁產出測試腳本
-        </p>
-      </div>
-    );
-  }
-  return <>{children}</>;
-}
 
 function Tab1Content({
   projectId,
@@ -758,4 +735,307 @@ function Tab1Content({
   }
 
   return null;
+}
+
+/* ---------- Tab 3: Test Report ---------- */
+
+interface TestRunResult {
+  id: string;
+  testCaseId: string;
+  name: string;
+  status: 'passed' | 'failed' | 'skipped';
+  actualResult?: string;
+  screenshot?: string;
+  duration?: number;
+}
+
+interface TestRun {
+  id: string;
+  projectId: number;
+  url: string;
+  createdAt: string;
+  summary: {
+    total: number;
+    passed: number;
+    failed: number;
+    skipped: number;
+  };
+  results: TestRunResult[];
+}
+
+function TestReportTab({ projectId }: { projectId: number }) {
+  const [loading, setLoading] = useState(true);
+  const [testRun, setTestRun] = useState<TestRun | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [pushingGitea, setPushingGitea] = useState(false);
+  const [pushMsg, setPushMsg] = useState('');
+
+  useEffect(() => {
+    setLoading(true);
+    api
+      .get<TestRun>(`/api/projects/${projectId}/test-runs/latest`)
+      .then(setTestRun)
+      .catch(() => setTestRun(null))
+      .finally(() => setLoading(false));
+  }, [projectId]);
+
+  const passRate =
+    testRun && testRun.summary.total - testRun.summary.skipped > 0
+      ? Math.round(
+          (testRun.summary.passed /
+            (testRun.summary.total - testRun.summary.skipped)) *
+            100,
+        )
+      : 0;
+
+  const handleDownloadMd = () => {
+    if (!testRun) return;
+    const lines: string[] = [
+      `# 測試報告`,
+      '',
+      `- 測試時間：${new Date(testRun.createdAt).toLocaleString('zh-TW')}`,
+      `- 目標 URL：${testRun.url}`,
+      `- 總數：${testRun.summary.total}`,
+      `- 通過：${testRun.summary.passed}`,
+      `- 失敗：${testRun.summary.failed}`,
+      `- 跳過：${testRun.summary.skipped}`,
+      `- 通過率：${passRate}%`,
+      '',
+      '## 測試結果',
+      '',
+    ];
+
+    for (const r of testRun.results) {
+      const icon =
+        r.status === 'passed' ? '✅' : r.status === 'failed' ? '❌' : '⏭';
+      lines.push(`### ${icon} ${r.testCaseId} ${r.name}`);
+      lines.push(`- 狀態：${r.status}`);
+      if (r.actualResult) lines.push(`- 實際結果：${r.actualResult}`);
+      lines.push('');
+    }
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `test-report-${testRun.id}.md`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const handlePushGitea = async () => {
+    if (!testRun) return;
+    setPushingGitea(true);
+    setPushMsg('');
+    try {
+      await api.post(`/api/projects/${projectId}/test-runs/${testRun.id}/push-gitea`);
+      setPushMsg('已成功推送到 Gitea');
+      setTimeout(() => setPushMsg(''), 3000);
+    } catch (err: unknown) {
+      setPushMsg(err instanceof Error ? err.message : '推送失敗');
+    } finally {
+      setPushingGitea(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 size={24} className="animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  if (!testRun) {
+    return (
+      <div className="rounded-md border border-gray-200 bg-white p-8 text-center text-gray-500">
+        <ClipboardList size={32} className="mx-auto mb-3 text-gray-300" />
+        <p className="text-sm">尚無測試報告</p>
+        <p className="mt-1 text-xs text-gray-400">
+          請先在「進行測試」分頁執行測試
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Summary card */}
+      <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-gray-800">
+              測試結果摘要
+            </h3>
+            <p className="text-xs text-gray-400">
+              {new Date(testRun.createdAt).toLocaleString('zh-TW')} &middot;{' '}
+              {testRun.url}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDownloadMd}
+              className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+            >
+              <Download size={14} />
+              下載 Markdown 報告
+            </button>
+            <button
+              type="button"
+              onClick={handlePushGitea}
+              disabled={pushingGitea}
+              className="inline-flex items-center gap-1.5 rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+            >
+              {pushingGitea ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <GitBranch size={14} />
+              )}
+              推送到 Gitea
+            </button>
+          </div>
+        </div>
+
+        {pushMsg && (
+          <div
+            className={`rounded-md px-3 py-2 text-sm ${
+              pushMsg.includes('成功')
+                ? 'bg-green-50 text-green-700'
+                : 'bg-red-50 text-red-700'
+            }`}
+          >
+            {pushMsg}
+          </div>
+        )}
+
+        {/* Stats grid */}
+        <div className="grid grid-cols-5 gap-3 text-center text-sm">
+          <div className="rounded-md bg-gray-50 p-3">
+            <div className="text-2xl font-bold text-gray-800">
+              {testRun.summary.total}
+            </div>
+            <div className="text-xs text-gray-500">總數</div>
+          </div>
+          <div className="rounded-md bg-green-50 p-3">
+            <div className="text-2xl font-bold text-green-600">
+              {testRun.summary.passed}
+            </div>
+            <div className="text-xs text-green-600">通過</div>
+          </div>
+          <div className="rounded-md bg-red-50 p-3">
+            <div className="text-2xl font-bold text-red-600">
+              {testRun.summary.failed}
+            </div>
+            <div className="text-xs text-red-600">失敗</div>
+          </div>
+          <div className="rounded-md bg-gray-50 p-3">
+            <div className="text-2xl font-bold text-gray-500">
+              {testRun.summary.skipped}
+            </div>
+            <div className="text-xs text-gray-500">跳過</div>
+          </div>
+          <div className="rounded-md bg-blue-50 p-3">
+            <div
+              className={`text-2xl font-bold ${
+                passRate >= 80 ? 'text-green-600' : 'text-red-600'
+              }`}
+            >
+              {passRate}%
+            </div>
+            <div className="text-xs text-blue-600">通過率</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Individual results */}
+      <div className="rounded-lg border border-gray-200 bg-white">
+        <div className="border-b border-gray-100 px-5 py-3">
+          <h3 className="text-sm font-semibold text-gray-800">
+            測試案例結果
+          </h3>
+        </div>
+        <div className="divide-y divide-gray-100">
+          {testRun.results.map((r) => {
+            const isExpanded = expandedId === r.id;
+            const StatusIcon =
+              r.status === 'passed'
+                ? CheckCircle2
+                : r.status === 'failed'
+                  ? XCircle
+                  : SkipForward;
+            const statusColor =
+              r.status === 'passed'
+                ? 'text-green-500'
+                : r.status === 'failed'
+                  ? 'text-red-500'
+                  : 'text-gray-400';
+
+            return (
+              <div
+                key={r.id}
+                className={r.status === 'failed' ? 'bg-red-50/50' : ''}
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedId(isExpanded ? null : r.id)
+                  }
+                  className="flex w-full items-center gap-3 px-5 py-3 text-left text-sm hover:bg-gray-50 transition-colors"
+                >
+                  <StatusIcon size={18} className={statusColor} />
+                  <span className="font-mono text-xs text-gray-400">
+                    {r.testCaseId}
+                  </span>
+                  <span className="flex-1 text-gray-800">{r.name}</span>
+                  {r.duration != null && (
+                    <span className="text-xs text-gray-400">
+                      {(r.duration / 1000).toFixed(1)}s
+                    </span>
+                  )}
+                  {isExpanded ? (
+                    <ChevronUp size={14} className="text-gray-400" />
+                  ) : (
+                    <ChevronDown size={14} className="text-gray-400" />
+                  )}
+                </button>
+
+                {isExpanded && (
+                  <div className="border-t border-gray-100 px-6 py-3 space-y-2 text-xs text-gray-600">
+                    {r.actualResult && (
+                      <p>
+                        <span className="font-medium text-gray-700">
+                          實際結果：
+                        </span>
+                        {r.actualResult}
+                      </p>
+                    )}
+                    {r.screenshot && (
+                      <div>
+                        <p className="font-medium text-gray-700 mb-1 flex items-center gap-1">
+                          <ImageIcon size={12} />
+                          截圖：
+                        </p>
+                        <img
+                          src={
+                            r.screenshot.startsWith('data:')
+                              ? r.screenshot
+                              : `data:image/png;base64,${r.screenshot}`
+                          }
+                          alt={`${r.testCaseId} 截圖`}
+                          className="max-h-48 rounded border border-gray-200"
+                        />
+                      </div>
+                    )}
+                    {!r.actualResult && !r.screenshot && (
+                      <p className="text-gray-400">無額外資訊</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
 }
