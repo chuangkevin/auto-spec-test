@@ -2,12 +2,12 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { getDb } from '../db/connection.js';
 import { GiteaService } from '../services/giteaService.js';
 
-/** 取得使用者的 Gitea connection */
-function getUserConnection(userId: number) {
+/** 取得全域 Gitea connection（不分使用者） */
+function getGlobalConnection() {
   const db = getDb();
   return db
-    .prepare('SELECT * FROM gitea_connections WHERE user_id = ? ORDER BY id DESC LIMIT 1')
-    .get(userId) as
+    .prepare('SELECT * FROM gitea_connections ORDER BY id DESC LIMIT 1')
+    .get() as
     | {
         id: number;
         user_id: number;
@@ -18,9 +18,9 @@ function getUserConnection(userId: number) {
     | undefined;
 }
 
-/** 建立一個已認證的 GiteaService 實例 */
-function createGiteaService(userId: number): GiteaService {
-  const conn = getUserConnection(userId);
+/** 建立一個已認證的 GiteaService 實例（全域） */
+function createGiteaService(): GiteaService {
+  const conn = getGlobalConnection();
   if (!conn) {
     throw new Error('尚未連接 Gitea，請先在設定頁面連接');
   }
@@ -50,14 +50,14 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
       const gitea = new GiteaService(giteaUrl, token);
       const user = await gitea.verifyToken();
 
-      // 存入 DB（先刪舊的再建新的）
+      // 存入 DB（全域只保留一組，先清空再新增）
       const db = getDb();
-      db.prepare('DELETE FROM gitea_connections WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM gitea_connections').run();
 
       db.prepare(
         `INSERT INTO gitea_connections (user_id, gitea_url, access_token, gitea_username)
-         VALUES (?, ?, ?, ?)`,
-      ).run(userId, giteaUrl.replace(/\/+$/, ''), token, user.login);
+         VALUES (0, ?, ?, ?)`,
+      ).run(giteaUrl.replace(/\/+$/, ''), token, user.login);
 
       return {
         success: true,
@@ -79,7 +79,7 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
     }
 
     const db = getDb();
-    db.prepare('DELETE FROM gitea_connections WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM gitea_connections').run();
     return { success: true };
   });
 
@@ -90,7 +90,7 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
       return reply.status(401).send({ error: 'Unauthorized' });
     }
 
-    const conn = getUserConnection(userId);
+    const conn = getGlobalConnection();
     if (!conn) {
       return { connected: false, username: null };
     }
@@ -119,7 +119,7 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
     }
 
     try {
-      const gitea = createGiteaService(userId);
+      const gitea = createGiteaService();
       const orgs = await gitea.listOrgs();
       return orgs.map((o) => ({
         username: o.username,
@@ -143,7 +143,7 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
     const { org } = request.params;
 
     try {
-      const gitea = createGiteaService(userId);
+      const gitea = createGiteaService();
       const projects = await gitea.listOrgProjects(org);
       return projects.map((p) => ({
         id: p.id,
@@ -167,7 +167,7 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
     const { org } = request.params;
 
     try {
-      const gitea = createGiteaService(userId);
+      const gitea = createGiteaService();
       const repos = await gitea.listOrgRepos(org);
       return repos.map((r) => ({
         full_name: r.full_name,
@@ -197,7 +197,7 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
     }
 
     try {
-      const gitea = createGiteaService(userId);
+      const gitea = createGiteaService();
       const repo = await gitea.createOrgRepo(org, name.trim(), description);
       return reply.status(201).send({
         full_name: repo.full_name,
@@ -217,7 +217,7 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
     }
 
     try {
-      const gitea = createGiteaService(userId);
+      const gitea = createGiteaService();
       const repos = await gitea.listAllRepos();
       return repos.map((r) => ({
         full_name: r.full_name,
@@ -242,7 +242,7 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
     const { org } = request.params;
 
     try {
-      const gitea = createGiteaService(userId);
+      const gitea = createGiteaService();
       const members = await gitea.listOrgMembers(org);
       return members.map((m) => ({
         login: m.login,
@@ -283,7 +283,7 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
     }
 
     try {
-      const gitea = createGiteaService(userId);
+      const gitea = createGiteaService();
 
       // 確保 bug label 存在
       const bugLabelId = await gitea.ensureBugLabel(owner, repoName);
@@ -350,7 +350,7 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
     }
 
     try {
-      const gitea = createGiteaService(userId);
+      const gitea = createGiteaService();
       const db = getDb();
 
       // 確保 bug label 存在
