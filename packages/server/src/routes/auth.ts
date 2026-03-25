@@ -14,12 +14,12 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
     const db = getDb();
     const user = db
-      .prepare('SELECT id, username, password, email, role FROM users WHERE username = ?')
+      .prepare('SELECT id, username, password_hash, email, role FROM users WHERE username = ?')
       .get(username) as
-      | { id: number; username: string; password: string; email: string; role: string }
+      | { id: string; username: string; password_hash: string; email: string; role: string }
       | undefined;
 
-    if (!user || !verifyPassword(password, user.password)) {
+    if (!user || !verifyPassword(password, user.password_hash)) {
       return reply.code(401).send({ error: 'Invalid username or password' });
     }
 

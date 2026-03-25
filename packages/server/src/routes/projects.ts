@@ -1,5 +1,4 @@
 import type { FastifyInstance } from 'fastify';
-import { randomUUID } from 'node:crypto';
 import { getDb } from '../db/connection.js';
 import { authHook } from '../middleware/auth.js';
 
@@ -77,11 +76,9 @@ export default async function projectRoutes(fastify: FastifyInstance): Promise<v
       return reply.code(400).send({ error: 'Product not found' });
     }
 
-    const id = randomUUID();
-
-    db.prepare(
-      'INSERT INTO projects (id, name, product_id, description, status, created_by) VALUES (?, ?, ?, ?, ?, ?)',
-    ).run(id, name, product_id, description ?? null, 'draft', request.user.id);
+    const info = db.prepare(
+      'INSERT INTO projects (name, product_id, description, status, created_by) VALUES (?, ?, ?, ?, ?)',
+    ).run(name, product_id, description ?? null, 'draft', request.user.id);
 
     const project = db
       .prepare(`
@@ -92,7 +89,7 @@ export default async function projectRoutes(fastify: FastifyInstance): Promise<v
         LEFT JOIN products pr ON p.product_id = pr.id
         WHERE p.id = ?
       `)
-      .get(id);
+      .get(info.lastInsertRowid);
 
     return reply.code(201).send(project);
   });

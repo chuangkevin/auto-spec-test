@@ -1,5 +1,4 @@
 import type { FastifyInstance } from 'fastify';
-import { randomUUID } from 'node:crypto';
 import { getDb } from '../db/connection.js';
 import { authHook } from '../middleware/auth.js';
 
@@ -32,25 +31,15 @@ export default async function productRoutes(fastify: FastifyInstance): Promise<v
       return reply.code(400).send({ error: 'Product name already exists' });
     }
 
-    const id = randomUUID();
-    const productCode = code ?? name.toLowerCase().replace(/\s+/g, '-');
+    const productCode = code ?? null;
 
-    // code 也不可重複（schema UNIQUE constraint）
-    const existingCode = db
-      .prepare('SELECT id FROM products WHERE code = ?')
-      .get(productCode);
-
-    if (existingCode) {
-      return reply.code(400).send({ error: 'Product code already exists' });
-    }
-
-    db.prepare(
-      'INSERT INTO products (id, name, code, description, created_by) VALUES (?, ?, ?, ?, ?)',
-    ).run(id, name, productCode, description ?? null, request.user.id);
+    const info = db.prepare(
+      'INSERT INTO products (name, code, description, created_by) VALUES (?, ?, ?, ?)',
+    ).run(name, productCode, description ?? null, request.user.id);
 
     const product = db
       .prepare('SELECT id, name, code, description, created_by, created_at FROM products WHERE id = ?')
-      .get(id);
+      .get(info.lastInsertRowid);
 
     return reply.code(201).send(product);
   });

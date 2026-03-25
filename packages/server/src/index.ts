@@ -6,7 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // 1. 載入 dotenv（從專案根目錄的 .env）
-dotenv.config({ path: resolve(__dirname, '../../.env') });
+dotenv.config({ path: resolve(__dirname, '../../../.env') });
 
 import Fastify from 'fastify';
 import cors from '@fastify/cors';

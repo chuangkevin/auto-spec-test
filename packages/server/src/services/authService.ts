@@ -56,6 +56,6 @@ export function ensureDefaultAdmin(): void {
   const hashed = hashPassword(password);
 
   db.prepare(
-    'INSERT INTO users (username, password, email, role) VALUES (?, ?, ?, ?)',
+    'INSERT INTO users (username, password_hash, email, role) VALUES (?, ?, ?, ?)',
   ).run(username, hashed, email, 'admin');
 }
