@@ -100,9 +100,14 @@ export default function TestExecutionPanel({
 
           switch (msg.type) {
             case 'screenshot': {
-              const d = msg.data as { screenshot: string; pageInfo?: PageInfo };
-              setScreenshot(d.screenshot);
-              if (d.pageInfo) setPageInfo(d.pageInfo);
+              // data can be raw base64 string or { screenshot, pageInfo }
+              if (typeof msg.data === 'string') {
+                setScreenshot(msg.data);
+              } else {
+                const d = msg.data as { screenshot: string; pageInfo?: PageInfo };
+                setScreenshot(d.screenshot);
+                if (d.pageInfo) setPageInfo(d.pageInfo);
+              }
               break;
             }
             case 'step': {
@@ -141,8 +146,9 @@ export default function TestExecutionPanel({
               break;
             }
             case 'status': {
-              const d = msg.data as { status: SessionStatus };
-              setStatus(d.status);
+              const d = msg.data as { state?: SessionStatus; status?: SessionStatus };
+              const newStatus = d.state || d.status;
+              if (newStatus) setStatus(newStatus);
               break;
             }
             case 'components': {
