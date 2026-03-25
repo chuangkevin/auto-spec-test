@@ -141,7 +141,7 @@ export default async function specificationRoutes(fastify: FastifyInstance) {
       // Call AI to parse specification
       let outlineMd: string;
       try {
-        outlineMd = await parseSpecification(rawText, projectId);
+        outlineMd = await parseSpecification(rawText, Number(projectId));
       } catch (err: any) {
         return reply
           .status(500)

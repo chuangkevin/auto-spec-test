@@ -26,7 +26,7 @@ import giteaRoutes from './routes/gitea.js';
 const app = Fastify({ logger: true });
 
 // 不需要認證的路徑
-const PUBLIC_PATHS = ['/api/auth/users', '/api/auth/select', '/api/auth/register', '/api/health', '/api/gitea/callback'];
+const PUBLIC_PATHS = ['/api/auth/users', '/api/auth/select', '/api/auth/register', '/api/health'];
 
 async function start(): Promise<void> {
   // 3. 註冊 plugins

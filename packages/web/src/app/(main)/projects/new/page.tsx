@@ -3,19 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, GitBranch } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Product, Project } from '@/types';
-
-interface GiteaRepo {
-  id: number;
-  full_name: string;
-  description?: string;
-}
-
-interface GiteaStatus {
-  connected: boolean;
-}
 
 export default function NewProjectPage() {
   const router = useRouter();
@@ -28,34 +18,12 @@ export default function NewProjectPage() {
   const [productId, setProductId] = useState('');
   const [description, setDescription] = useState('');
 
-  // Gitea 相關
-  const [giteaConnected, setGiteaConnected] = useState(false);
-  const [giteaRepos, setGiteaRepos] = useState<GiteaRepo[]>([]);
-  const [loadingRepos, setLoadingRepos] = useState(false);
-  const [giteaRepo, setGiteaRepo] = useState('');
-
   useEffect(() => {
     api
       .get<Product[]>('/api/products')
       .then(setProducts)
       .catch(() => {})
       .finally(() => setLoadingProducts(false));
-
-    // 檢查 Gitea 連接狀態
-    api
-      .get<GiteaStatus>('/api/gitea/status')
-      .then((data) => {
-        setGiteaConnected(data.connected);
-        if (data.connected) {
-          setLoadingRepos(true);
-          api
-            .get<GiteaRepo[]>('/api/gitea/repos')
-            .then(setGiteaRepos)
-            .catch(() => {})
-            .finally(() => setLoadingRepos(false));
-        }
-      })
-      .catch(() => {});
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -77,7 +45,6 @@ export default function NewProjectPage() {
         name: name.trim(),
         product_id: Number(productId),
         description: description.trim() || undefined,
-        gitea_repo: giteaRepo || undefined,
       });
       router.push(`/projects/${project.id}`);
     } catch (err: unknown) {
@@ -175,42 +142,9 @@ export default function NewProjectPage() {
             />
           </div>
 
-          {/* Gitea Repository 選擇（選填） */}
-          <div>
-            <label htmlFor="gitea-repo-select" className="mb-1 flex items-center gap-1.5 text-sm font-medium text-gray-700">
-              <GitBranch size={14} className="text-green-600" />
-              Gitea Repository
-              <span className="text-xs font-normal text-gray-400">（選填）</span>
-            </label>
-            {!giteaConnected ? (
-              <p className="rounded-md bg-gray-50 border border-gray-200 px-3 py-2 text-sm text-gray-400">
-                連接 Gitea 後可綁定 Repository（前往
-                <Link href="/settings" className="text-green-600 hover:text-green-800 underline mx-1">
-                  系統設定
-                </Link>
-                連接）
-              </p>
-            ) : loadingRepos ? (
-              <div className="flex items-center gap-1.5 text-sm text-gray-400">
-                <Loader2 size={14} className="animate-spin" />
-                載入 Repository 列表…
-              </div>
-            ) : (
-              <select
-                id="gitea-repo-select"
-                value={giteaRepo}
-                onChange={(e) => setGiteaRepo(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
-              >
-                <option value="">不綁定</option>
-                {giteaRepos.map((r) => (
-                  <option key={r.id} value={r.full_name}>
-                    {r.full_name}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
+          <p className="text-xs text-gray-400">
+            Gitea 設定（Organization、Repository、Project Board）可在建立專案後於專案詳情頁設定。
+          </p>
 
           <div className="flex items-center gap-3 pt-2">
             <button

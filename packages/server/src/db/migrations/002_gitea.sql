@@ -1,15 +1,12 @@
--- 002_gitea.sql  –  Gitea integration tables
+-- 002_gitea.sql  –  Gitea integration tables (Personal Access Token 模式)
 
 CREATE TABLE IF NOT EXISTS gitea_connections (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id),
   gitea_url TEXT NOT NULL,
   access_token TEXT NOT NULL,
-  refresh_token TEXT,
-  token_expires_at TEXT,
   gitea_username TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS gitea_issues (
@@ -22,5 +19,7 @@ CREATE TABLE IF NOT EXISTS gitea_issues (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Add gitea_repo column to projects table
+-- Add gitea columns to projects table
+ALTER TABLE projects ADD COLUMN gitea_org TEXT;
 ALTER TABLE projects ADD COLUMN gitea_repo TEXT;
+ALTER TABLE projects ADD COLUMN gitea_project_id INTEGER;

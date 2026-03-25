@@ -17,6 +17,7 @@ interface BugData {
 interface Props {
   bug: BugData;
   repo: string; // owner/repo
+  org?: string; // organization name for fetching members
   projectName?: string;
   onPushed?: (issueUrl: string) => void;
 }
@@ -52,7 +53,7 @@ function buildIssueBody(bug: BugData, projectName?: string): string {
   return lines.join('\n');
 }
 
-export default function GiteaPushButton({ bug, repo, projectName, onPushed }: Props) {
+export default function GiteaPushButton({ bug, repo, org, projectName, onPushed }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
@@ -66,12 +67,16 @@ export default function GiteaPushButton({ bug, repo, projectName, onPushed }: Pr
   useEffect(() => {
     if (!expanded || members.length > 0) return;
     setLoadingMembers(true);
+    // 優先使用 org 成員 API，否則 fallback 到 repo collaborators
+    const membersUrl = org
+      ? `/api/gitea/orgs/${encodeURIComponent(org)}/members`
+      : `/api/gitea/repos/${owner}/${repoName}/members`;
     api
-      .get<Member[]>(`/api/gitea/repos/${owner}/${repoName}/members`)
+      .get<Member[]>(membersUrl)
       .then(setMembers)
       .catch(() => {})
       .finally(() => setLoadingMembers(false));
-  }, [expanded, owner, repoName, members.length]);
+  }, [expanded, owner, repoName, org, members.length]);
 
   const handlePush = async () => {
     setPushing(true);
@@ -139,7 +144,7 @@ export default function GiteaPushButton({ bug, repo, projectName, onPushed }: Pr
 
           {/* Assignee 選擇 */}
           <div className="mb-3">
-            <label className="mb-1 block text-xs font-semibold text-gray-500 uppercase">
+            <label htmlFor="push-assignee-select" className="mb-1 block text-xs font-semibold text-gray-500 uppercase">
               指派成員
             </label>
             {loadingMembers ? (
@@ -149,6 +154,7 @@ export default function GiteaPushButton({ bug, repo, projectName, onPushed }: Pr
               </div>
             ) : (
               <select
+                id="push-assignee-select"
                 value={assignee}
                 onChange={(e) => setAssignee(e.target.value)}
                 className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"

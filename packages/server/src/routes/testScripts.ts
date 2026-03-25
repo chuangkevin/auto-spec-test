@@ -51,7 +51,7 @@ export default async function testScriptRoutes(fastify: FastifyInstance) {
         scriptMd = await generateTestScript(
           spec.parsed_outline_md,
           project.product_name,
-          projectId
+          Number(projectId)
         );
       } catch (err: any) {
         return reply

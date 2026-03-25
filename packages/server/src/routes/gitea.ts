@@ -2,33 +2,6 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { getDb } from '../db/connection.js';
 import { GiteaService } from '../services/giteaService.js';
 
-/** 從 settings 表讀取 Gitea 設定 */
-function getGiteaSettings(): {
-  giteaUrl: string;
-  clientId: string;
-  clientSecret: string;
-} {
-  const db = getDb();
-  const rows = db
-    .prepare("SELECT key, value FROM settings WHERE key IN ('gitea_url', 'gitea_client_id', 'gitea_client_secret')")
-    .all() as Array<{ key: string; value: string }>;
-
-  const map: Record<string, string> = {};
-  for (const row of rows) {
-    map[row.key] = row.value;
-  }
-
-  if (!map.gitea_url || !map.gitea_client_id || !map.gitea_client_secret) {
-    throw new Error('Gitea OAuth 設定不完整，請先在設定頁面填入 gitea_url、gitea_client_id、gitea_client_secret');
-  }
-
-  return {
-    giteaUrl: map.gitea_url.replace(/\/+$/, ''),
-    clientId: map.gitea_client_id,
-    clientSecret: map.gitea_client_secret,
-  };
-}
-
 /** 取得使用者的 Gitea connection */
 function getUserConnection(userId: number) {
   const db = getDb();
@@ -40,8 +13,6 @@ function getUserConnection(userId: number) {
         user_id: number;
         gitea_url: string;
         access_token: string;
-        refresh_token: string | null;
-        token_expires_at: string | null;
         gitea_username: string | null;
       }
     | undefined;
@@ -51,118 +22,68 @@ function getUserConnection(userId: number) {
 function createGiteaService(userId: number): GiteaService {
   const conn = getUserConnection(userId);
   if (!conn) {
-    throw new Error('尚未連接 Gitea，請先進行 OAuth 授權');
+    throw new Error('尚未連接 Gitea，請先在設定頁面連接');
   }
   return new GiteaService(conn.gitea_url, conn.access_token);
 }
 
 export default async function giteaRoutes(fastify: FastifyInstance): Promise<void> {
-  // ─── OAuth2 流程 ───
+  // ─── 連接管理 ───
 
-  /** GET /api/gitea/auth-url → 回傳授權 URL */
-  fastify.get('/api/gitea/auth-url', async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const { giteaUrl, clientId } = getGiteaSettings();
-      const redirectUri = `${request.protocol}://${request.hostname}/api/gitea/callback`;
-
-      const params = new URLSearchParams({
-        client_id: clientId,
-        redirect_uri: redirectUri,
-        response_type: 'code',
-        state: String((request as any).user?.id ?? ''),
-      });
-
-      const url = `${giteaUrl}/login/oauth/authorize?${params.toString()}`;
-      return { url };
-    } catch (err: any) {
-      return reply.status(400).send({ error: err.message });
+  /** POST /api/gitea/connect — 使用 Personal Access Token 連接 */
+  fastify.post<{
+    Body: { giteaUrl: string; token: string };
+  }>('/api/gitea/connect', async (request, reply) => {
+    const userId = (request as any).user?.id;
+    if (!userId) {
+      return reply.status(401).send({ error: 'Unauthorized' });
     }
-  });
 
-  /** GET /api/gitea/callback?code=xxx&state=userId → OAuth callback */
-  fastify.get<{
-    Querystring: { code?: string; state?: string };
-  }>('/api/gitea/callback', async (request, reply) => {
-    const { code, state } = request.query;
+    const { giteaUrl, token } = request.body as any;
 
-    if (!code) {
-      return reply.status(400).send({ error: '缺少 authorization code' });
+    if (!giteaUrl || !token) {
+      return reply.status(400).send({ error: '請提供 Gitea URL 及 Personal Access Token' });
     }
 
     try {
-      const { giteaUrl, clientId, clientSecret } = getGiteaSettings();
-      const redirectUri = `${request.protocol}://${request.hostname}/api/gitea/callback`;
-
-      // 用 code 換 access_token
-      const tokenRes = await fetch(`${giteaUrl}/login/oauth/access_token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({
-          client_id: clientId,
-          client_secret: clientSecret,
-          code,
-          grant_type: 'authorization_code',
-          redirect_uri: redirectUri,
-        }),
-      });
-
-      if (!tokenRes.ok) {
-        const text = await tokenRes.text().catch(() => '');
-        return reply.status(502).send({
-          error: `Gitea token exchange failed (${tokenRes.status}): ${text}`,
-        });
-      }
-
-      const tokenData = (await tokenRes.json()) as {
-        access_token: string;
-        refresh_token?: string;
-        expires_in?: number;
-        token_type: string;
-      };
-
-      if (!tokenData.access_token) {
-        return reply.status(502).send({ error: 'Gitea 未回傳 access_token' });
-      }
-
-      // 用 token 取得使用者資訊
-      const gitea = new GiteaService(giteaUrl, tokenData.access_token);
-      const giteaUser = await gitea.getCurrentUser();
-
-      // 從 state 取得 userId
-      const userId = Number(state);
-      if (!userId) {
-        return reply.status(400).send({ error: '無法辨識使用者，state 無效' });
-      }
+      // 驗證 token 有效
+      const gitea = new GiteaService(giteaUrl, token);
+      const user = await gitea.verifyToken();
 
       // 存入 DB（先刪舊的再建新的）
       const db = getDb();
       db.prepare('DELETE FROM gitea_connections WHERE user_id = ?').run(userId);
 
-      const expiresAt = tokenData.expires_in
-        ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
-        : null;
-
       db.prepare(
-        `INSERT INTO gitea_connections (user_id, gitea_url, access_token, refresh_token, token_expires_at, gitea_username)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      ).run(
-        userId,
-        giteaUrl,
-        tokenData.access_token,
-        tokenData.refresh_token ?? null,
-        expiresAt,
-        giteaUser.login,
-      );
+        `INSERT INTO gitea_connections (user_id, gitea_url, access_token, gitea_username)
+         VALUES (?, ?, ?, ?)`,
+      ).run(userId, giteaUrl.replace(/\/+$/, ''), token, user.login);
 
-      // Redirect 回前端設定頁
-      return reply.redirect('/settings?gitea=connected');
+      return {
+        success: true,
+        username: user.login,
+        userId: user.id,
+      };
     } catch (err: any) {
-      console.error('[Gitea callback error]', err);
-      return reply.redirect(`/settings?gitea=error&message=${encodeURIComponent(err.message)}`);
+      return reply.status(400).send({
+        error: `Token 驗證失敗：${err.message}`,
+      });
     }
   });
 
-  /** GET /api/gitea/status → 檢查連接狀態 */
+  /** DELETE /api/gitea/disconnect — 斷開連接 */
+  fastify.delete('/api/gitea/disconnect', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = (request as any).user?.id;
+    if (!userId) {
+      return reply.status(401).send({ error: 'Unauthorized' });
+    }
+
+    const db = getDb();
+    db.prepare('DELETE FROM gitea_connections WHERE user_id = ?').run(userId);
+    return { success: true };
+  });
+
+  /** GET /api/gitea/status — 連接狀態 */
   fastify.get('/api/gitea/status', async (request: FastifyRequest, reply: FastifyReply) => {
     const userId = (request as any).user?.id;
     if (!userId) {
@@ -177,29 +98,21 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
     // 驗證 token 是否仍有效
     try {
       const gitea = new GiteaService(conn.gitea_url, conn.access_token);
-      const user = await gitea.getCurrentUser();
-      return { connected: true, username: user.login };
+      const user = await gitea.verifyToken();
+      return {
+        connected: true,
+        username: user.login,
+        gitea_url: conn.gitea_url,
+      };
     } catch {
       return { connected: false, username: conn.gitea_username, tokenExpired: true };
     }
   });
 
-  /** DELETE /api/gitea/disconnect → 斷開連接 */
-  fastify.delete('/api/gitea/disconnect', async (request: FastifyRequest, reply: FastifyReply) => {
-    const userId = (request as any).user?.id;
-    if (!userId) {
-      return reply.status(401).send({ error: 'Unauthorized' });
-    }
+  // ─── Organization 操作 ───
 
-    const db = getDb();
-    db.prepare('DELETE FROM gitea_connections WHERE user_id = ?').run(userId);
-    return { success: true };
-  });
-
-  // ─── Repo 操作 ───
-
-  /** GET /api/gitea/repos → 列出有權限的 repos */
-  fastify.get('/api/gitea/repos', async (request: FastifyRequest, reply: FastifyReply) => {
+  /** GET /api/gitea/orgs — 列出使用者的 organizations */
+  fastify.get('/api/gitea/orgs', async (request: FastifyRequest, reply: FastifyReply) => {
     const userId = (request as any).user?.id;
     if (!userId) {
       return reply.status(401).send({ error: 'Unauthorized' });
@@ -207,9 +120,58 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
 
     try {
       const gitea = createGiteaService(userId);
-      const repos = await gitea.listRepos();
+      const orgs = await gitea.listOrgs();
+      return orgs.map((o) => ({
+        username: o.username,
+        full_name: o.full_name,
+        avatar_url: o.avatar_url,
+      }));
+    } catch (err: any) {
+      return reply.status(502).send({ error: err.message });
+    }
+  });
+
+  /** GET /api/gitea/orgs/:org/projects — 列出 org 的 project boards */
+  fastify.get<{
+    Params: { org: string };
+  }>('/api/gitea/orgs/:org/projects', async (request, reply) => {
+    const userId = (request as any).user?.id;
+    if (!userId) {
+      return reply.status(401).send({ error: 'Unauthorized' });
+    }
+
+    const { org } = request.params;
+
+    try {
+      const gitea = createGiteaService(userId);
+      const projects = await gitea.listOrgProjects(org);
+      return projects.map((p) => ({
+        id: p.id,
+        title: p.title,
+        description: p.description,
+      }));
+    } catch (err: any) {
+      return reply.status(502).send({ error: err.message });
+    }
+  });
+
+  /** GET /api/gitea/orgs/:org/repos — 列出 org 的 repos */
+  fastify.get<{
+    Params: { org: string };
+  }>('/api/gitea/orgs/:org/repos', async (request, reply) => {
+    const userId = (request as any).user?.id;
+    if (!userId) {
+      return reply.status(401).send({ error: 'Unauthorized' });
+    }
+
+    const { org } = request.params;
+
+    try {
+      const gitea = createGiteaService(userId);
+      const repos = await gitea.listOrgRepos(org);
       return repos.map((r) => ({
         full_name: r.full_name,
+        name: r.name,
         description: r.description,
       }));
     } catch (err: any) {
@@ -217,21 +179,25 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
     }
   });
 
-  /** GET /api/gitea/repos/:owner/:repo/members → repo 成員 */
+  /** GET /api/gitea/orgs/:org/members — 列出 org 成員 */
   fastify.get<{
-    Params: { owner: string; repo: string };
-  }>('/api/gitea/repos/:owner/:repo/members', async (request, reply) => {
+    Params: { org: string };
+  }>('/api/gitea/orgs/:org/members', async (request, reply) => {
     const userId = (request as any).user?.id;
     if (!userId) {
       return reply.status(401).send({ error: 'Unauthorized' });
     }
 
-    const { owner, repo } = request.params;
+    const { org } = request.params;
 
     try {
       const gitea = createGiteaService(userId);
-      const members = await gitea.getRepoMembers(owner, repo);
-      return members.map((m) => ({ login: m.login, id: m.id }));
+      const members = await gitea.listOrgMembers(org);
+      return members.map((m) => ({
+        login: m.login,
+        id: m.id,
+        avatar_url: m.avatar_url,
+      }));
     } catch (err: any) {
       return reply.status(502).send({ error: err.message });
     }
@@ -239,14 +205,14 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
 
   // ─── Issue 操作 ───
 
-  /** POST /api/gitea/issues → 建立單一 Issue */
+  /** POST /api/gitea/issues — 建立單一 Issue（到指定 repo）+ 加到 project board */
   fastify.post<{
     Body: {
       repo: string;
       title: string;
       body: string;
       assignees?: string[];
-      projectName?: string;
+      projectId?: number;
     };
   }>('/api/gitea/issues', async (request, reply) => {
     const userId = (request as any).user?.id;
@@ -254,7 +220,7 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
       return reply.status(401).send({ error: 'Unauthorized' });
     }
 
-    const { repo, title, body, assignees, projectName } = request.body as any;
+    const { repo, title, body, assignees, projectId } = request.body as any;
 
     if (!repo || !title) {
       return reply.status(400).send({ error: '缺少必要參數: repo, title' });
@@ -279,14 +245,9 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
         assignees: assignees || [],
       });
 
-      // 如果指定了 projectName，嘗試建立 project 並加入 issue
-      if (projectName) {
-        try {
-          const project = await gitea.createProject(owner, repoName, projectName);
-          await gitea.addIssueToProject(owner, repoName, project.id, issue.number);
-        } catch {
-          // Project API 可能不支援，忽略
-        }
+      // 如果指定了 projectId，嘗試加入 project board
+      if (projectId) {
+        await gitea.addIssueToProjectBoard(projectId, issue.id);
       }
 
       // 記錄到 DB
@@ -307,7 +268,7 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
     }
   });
 
-  /** POST /api/gitea/issues/batch → 批次建立 Issues */
+  /** POST /api/gitea/issues/batch — 批次建立 Issues */
   fastify.post<{
     Body: {
       repo: string;
@@ -317,7 +278,7 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
         body: string;
         executionId?: number;
       }>;
-      projectName?: string;
+      projectId?: number;
       assignee?: string;
     };
   }>('/api/gitea/issues/batch', async (request, reply) => {
@@ -326,7 +287,7 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
       return reply.status(401).send({ error: 'Unauthorized' });
     }
 
-    const { repo, bugs, projectName, assignee } = request.body as any;
+    const { repo, bugs, projectId, assignee } = request.body as any;
 
     if (!repo || !Array.isArray(bugs) || bugs.length === 0) {
       return reply.status(400).send({ error: '缺少必要參數: repo, bugs' });
@@ -343,17 +304,6 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
 
       // 確保 bug label 存在
       const bugLabelId = await gitea.ensureBugLabel(owner, repoName);
-
-      // 嘗試建立 project
-      let projectId: number | null = null;
-      if (projectName) {
-        try {
-          const project = await gitea.createProject(owner, repoName, projectName);
-          projectId = project.id;
-        } catch {
-          // Project API 可能不支援
-        }
-      }
 
       const results: Array<{
         bugId?: number;
@@ -385,9 +335,9 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
             repo,
           );
 
-          // 加入 project
+          // 加入 project board
           if (projectId) {
-            await gitea.addIssueToProject(owner, repoName, projectId, issue.number);
+            await gitea.addIssueToProjectBoard(projectId, issue.id);
           }
 
           results.push({

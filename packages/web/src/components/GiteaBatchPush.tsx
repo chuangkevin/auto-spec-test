@@ -18,6 +18,7 @@ interface BugItem {
 interface Props {
   bugs: BugItem[];
   repo: string; // owner/repo
+  org?: string; // organization name for fetching members
   projectName: string;
   executionId: number;
 }
@@ -34,7 +35,7 @@ interface BatchResult {
   errors: Array<{ bug_id: number; error: string }>;
 }
 
-export default function GiteaBatchPush({ bugs, repo, projectName, executionId }: Props) {
+export default function GiteaBatchPush({ bugs, repo, org, projectName, executionId }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(
     new Set(bugs.map((b) => b.id)),
   );
@@ -49,12 +50,15 @@ export default function GiteaBatchPush({ bugs, repo, projectName, executionId }:
 
   useEffect(() => {
     setLoadingMembers(true);
+    const membersUrl = org
+      ? `/api/gitea/orgs/${encodeURIComponent(org)}/members`
+      : `/api/gitea/repos/${owner}/${repoName}/members`;
     api
-      .get<Member[]>(`/api/gitea/repos/${owner}/${repoName}/members`)
+      .get<Member[]>(membersUrl)
       .then(setMembers)
       .catch(() => {})
       .finally(() => setLoadingMembers(false));
-  }, [owner, repoName]);
+  }, [owner, repoName, org]);
 
   const toggleId = (id: number) => {
     setSelectedIds((prev) => {
@@ -111,6 +115,7 @@ export default function GiteaBatchPush({ bugs, repo, projectName, executionId }:
             type="checkbox"
             checked={selectedIds.size === bugs.length}
             onChange={toggleAll}
+            aria-label="全選或取消全選"
             className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
           />
           <span className="text-sm font-medium text-gray-600">全選 / 取消全選</span>
@@ -133,7 +138,7 @@ export default function GiteaBatchPush({ bugs, repo, projectName, executionId }:
 
       {/* Assignee */}
       <div className="mb-4">
-        <label className="mb-1 block text-sm font-medium text-gray-700">
+        <label htmlFor="batch-assignee-select" className="mb-1 block text-sm font-medium text-gray-700">
           統一指派成員
         </label>
         {loadingMembers ? (
@@ -143,6 +148,7 @@ export default function GiteaBatchPush({ bugs, repo, projectName, executionId }:
           </div>
         ) : (
           <select
+            id="batch-assignee-select"
             value={assignee}
             onChange={(e) => setAssignee(e.target.value)}
             className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"

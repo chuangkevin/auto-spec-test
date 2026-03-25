@@ -1,11 +1,10 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { Key, Plus, Trash2, Shield, Loader2, AlertTriangle, GitBranch, ExternalLink, Check, Unlink } from 'lucide-react';
 import { api } from '@/lib/api';
 
-// ─── 型別定義 ─────────────────────────────────────────────────
+// --- 型別定義 ---
 
 interface ApiKeyItem {
   suffix: string;
@@ -40,7 +39,7 @@ interface GiteaStatus {
   gitea_url?: string;
 }
 
-// ─── 工具函式 ─────────────────────────────────────────────────
+// --- 工具函式 ---
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -56,7 +55,7 @@ function parseKeys(text: string): string[] {
     .filter((line) => line.length > 0 && !line.startsWith('-'));
 }
 
-// ─── 批次匯入區域 ─────────────────────────────────────────────
+// --- 批次匯入區域 ---
 
 function ImportSection({ onImported }: { onImported: () => void }) {
   const [text, setText] = useState('');
@@ -129,7 +128,7 @@ function ImportSection({ onImported }: { onImported: () => void }) {
           {importing ? (
             <>
               <Loader2 size={16} className="animate-spin" />
-              匯入中…
+              匯入中...
             </>
           ) : (
             <>
@@ -156,7 +155,7 @@ function ImportSection({ onImported }: { onImported: () => void }) {
   );
 }
 
-// ─── Key 列表 ─────────────────────────────────────────────────
+// --- Key 列表 ---
 
 function KeyListSection({
   keys,
@@ -205,7 +204,7 @@ function KeyListSection({
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-8 text-sm text-gray-500">
           <Loader2 size={16} className="animate-spin" />
-          載入中…
+          載入中...
         </div>
       ) : keys.length === 0 ? (
         <p className="py-8 text-center text-sm text-gray-500">
@@ -306,7 +305,7 @@ function KeyListSection({
   );
 }
 
-// ─── 用量統計 ─────────────────────────────────────────────────
+// --- 用量統計 ---
 
 function UsageSection({ usage }: { usage: ApiKeysResponse['usage'] | null }) {
   const periods = [
@@ -349,28 +348,19 @@ function UsageSection({ usage }: { usage: ApiKeysResponse['usage'] | null }) {
   );
 }
 
-// ─── Gitea 整合區塊 ──────────────────────────────────────────
+// --- Gitea 整合區塊（Personal Access Token 模式） ---
 
 function GiteaSection() {
-  const searchParams = useSearchParams();
-
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<GiteaStatus>({ connected: false });
 
-  // 設定表單
+  // 連接表單
   const [giteaUrl, setGiteaUrl] = useState('');
-  const [clientId, setClientId] = useState('');
-  const [clientSecret, setClientSecret] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [saveMsg, setSaveMsg] = useState('');
-
-  // 連接/斷開
+  const [token, setToken] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [error, setError] = useState('');
-
-  // 成功提示（從 OAuth callback 回來）
-  const [showConnectedToast, setShowConnectedToast] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('');
 
   const fetchStatus = async () => {
     try {
@@ -388,47 +378,28 @@ function GiteaSection() {
     fetchStatus();
   }, []);
 
-  useEffect(() => {
-    if (searchParams.get('gitea') === 'connected') {
-      setShowConnectedToast(true);
-      fetchStatus();
-      // 移除 query param
-      const url = new URL(window.location.href);
-      url.searchParams.delete('gitea');
-      window.history.replaceState({}, '', url.toString());
-      // 自動隱藏
-      const timer = setTimeout(() => setShowConnectedToast(false), 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [searchParams]);
-
-  const handleSaveSettings = async () => {
-    setSaving(true);
-    setSaveMsg('');
-    setError('');
-    try {
-      await api.put('/api/settings', {
-        gitea_url: giteaUrl.trim(),
-        gitea_client_id: clientId.trim(),
-        gitea_client_secret: clientSecret.trim(),
-      });
-      setSaveMsg('設定已儲存');
-      setClientSecret('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '儲存失敗');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleConnect = async () => {
+    if (!giteaUrl.trim() || !token.trim()) {
+      setError('請填入 Gitea URL 及 Personal Access Token');
+      return;
+    }
+
     setConnecting(true);
     setError('');
+    setSuccessMsg('');
+
     try {
-      const data = await api.get<{ url: string }>('/api/gitea/auth-url');
-      window.location.href = data.url;
+      const res = await api.post<{ success: boolean; username: string }>(
+        '/api/gitea/connect',
+        { giteaUrl: giteaUrl.trim(), token: token.trim() },
+      );
+      setStatus({ connected: true, username: res.username, gitea_url: giteaUrl.trim() });
+      setToken('');
+      setSuccessMsg('Gitea 連接成功！');
+      setTimeout(() => setSuccessMsg(''), 5000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '取得授權網址失敗');
+      setError(err instanceof Error ? err.message : '連接失敗');
+    } finally {
       setConnecting(false);
     }
   };
@@ -439,7 +410,7 @@ function GiteaSection() {
     try {
       await api.delete('/api/gitea/disconnect');
       setStatus({ connected: false });
-      setShowConnectedToast(false);
+      setSuccessMsg('');
     } catch (err) {
       setError(err instanceof Error ? err.message : '斷開連接失敗');
     } finally {
@@ -452,7 +423,7 @@ function GiteaSection() {
       <div className="rounded-lg border border-green-200 bg-white p-6">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <Loader2 size={16} className="animate-spin" />
-          載入 Gitea 狀態…
+          載入 Gitea 狀態...
         </div>
       </div>
     );
@@ -466,10 +437,10 @@ function GiteaSection() {
       </div>
 
       {/* 成功提示 */}
-      {showConnectedToast && (
+      {successMsg && (
         <div className="mb-4 flex items-center gap-2 rounded-md bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
           <Check size={16} />
-          Gitea 連接成功！
+          {successMsg}
         </div>
       )}
 
@@ -481,7 +452,7 @@ function GiteaSection() {
       )}
 
       {status.connected ? (
-        /* ── 已連接狀態 ── */
+        /* -- 已連接狀態 -- */
         <div className="space-y-4">
           <div className="flex items-center gap-3 rounded-md bg-green-50 border border-green-200 px-4 py-3">
             <Check size={18} className="text-green-600" />
@@ -514,7 +485,7 @@ function GiteaSection() {
             {disconnecting ? (
               <>
                 <Loader2 size={14} className="animate-spin" />
-                斷開中…
+                斷開中...
               </>
             ) : (
               <>
@@ -525,8 +496,13 @@ function GiteaSection() {
           </button>
         </div>
       ) : (
-        /* ── 未連接狀態 ── */
+        /* -- 未連接狀態 -- */
         <div className="space-y-4">
+          <div className="rounded-md bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-700">
+            請在 Gitea &rarr; Settings &rarr; Applications &rarr; Access Tokens 建立 Token，
+            勾選需要的權限（建議勾選 issue、organization、repository）後貼到下方。
+          </div>
+
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
               Gitea URL
@@ -543,63 +519,28 @@ function GiteaSection() {
 
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
-              OAuth2 Client ID
-            </label>
-            <input
-              type="text"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              placeholder="輸入 Client ID"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
-            />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              OAuth2 Client Secret
+              Personal Access Token
             </label>
             <input
               type="password"
-              value={clientSecret}
-              onChange={(e) => setClientSecret(e.target.value)}
-              placeholder="輸入 Client Secret"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="輸入 Personal Access Token"
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
             />
           </div>
-
-          {saveMsg && (
-            <div className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">
-              {saveMsg}
-            </div>
-          )}
 
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={handleSaveSettings}
-              disabled={saving || !giteaUrl.trim()}
-              className="inline-flex items-center gap-2 rounded-md bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50 transition-colors"
-            >
-              {saving ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" />
-                  儲存中…
-                </>
-              ) : (
-                '儲存設定'
-              )}
-            </button>
-
-            <button
-              type="button"
               onClick={handleConnect}
-              disabled={connecting || !giteaUrl.trim()}
+              disabled={connecting || !giteaUrl.trim() || !token.trim()}
               className="inline-flex items-center gap-2 rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
             >
               {connecting ? (
                 <>
                   <Loader2 size={14} className="animate-spin" />
-                  連接中…
+                  連接中...
                 </>
               ) : (
                 <>
@@ -615,7 +556,7 @@ function GiteaSection() {
   );
 }
 
-// ─── 設定頁主元件 ─────────────────────────────────────────────
+// --- 設定頁主元件 ---
 
 export default function SettingsPage() {
   const [keys, setKeys] = useState<ApiKeyItem[]>([]);

@@ -1,5 +1,5 @@
 /**
- * Gitea API v1 封裝
+ * Gitea API v1 封裝 — Organization-level Personal Access Token 模式
  */
 export class GiteaService {
   private baseUrl: string;
@@ -37,25 +37,39 @@ export class GiteaService {
     return res.json() as Promise<T>;
   }
 
-  /** 取得目前使用者資訊 */
-  async getCurrentUser(): Promise<{ login: string; id: number }> {
+  /** 驗證 token 有效，取得目前使用者資訊 */
+  async verifyToken(): Promise<{ login: string; id: number }> {
     return this.request('GET', '/user');
   }
 
-  /** 取得使用者的 repo 列表 */
-  async listRepos(page = 1, limit = 50): Promise<Array<{ full_name: string; description: string }>> {
-    return this.request('GET', `/user/repos?page=${page}&limit=${limit}`);
+  /** 取得使用者所屬的 organizations */
+  async listOrgs(): Promise<Array<{ username: string; full_name: string; avatar_url: string }>> {
+    return this.request('GET', '/user/orgs');
   }
 
-  /** 取得 repo 成員（collaborators） */
-  async getRepoMembers(
-    owner: string,
-    repo: string,
-  ): Promise<Array<{ login: string; id: number }>> {
-    return this.request('GET', `/repos/${owner}/${repo}/collaborators`);
+  /** 取得 organization 的 project boards */
+  async listOrgProjects(org: string): Promise<Array<{ id: number; title: string; description: string }>> {
+    try {
+      // Gitea 1.20+ 支援 org-level projects
+      return await this.request('GET', `/orgs/${encodeURIComponent(org)}/projects`);
+    } catch {
+      // fallback: 某些版本可能不支援，回傳空陣列
+      console.warn(`[GiteaService] listOrgProjects for ${org} failed, returning empty array`);
+      return [];
+    }
   }
 
-  /** 建立 Issue */
+  /** 取得 organization 的 repos */
+  async listOrgRepos(org: string, page = 1, limit = 50): Promise<Array<{ full_name: string; name: string; description: string }>> {
+    return this.request('GET', `/orgs/${encodeURIComponent(org)}/repos?page=${page}&limit=${limit}`);
+  }
+
+  /** 取得 org 成員 */
+  async listOrgMembers(org: string): Promise<Array<{ login: string; id: number; avatar_url: string }>> {
+    return this.request('GET', `/orgs/${encodeURIComponent(org)}/members`);
+  }
+
+  /** 在 repo 建立 Issue */
   async createIssue(
     owner: string,
     repo: string,
@@ -65,16 +79,44 @@ export class GiteaService {
       labels?: number[];
       assignees?: string[];
     },
-  ): Promise<{ number: number; html_url: string }> {
-    return this.request('POST', `/repos/${owner}/${repo}/issues`, data);
+  ): Promise<{ number: number; html_url: string; id: number }> {
+    return this.request('POST', `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues`, data);
+  }
+
+  /** 取得 Project Board 的 columns */
+  async getProjectColumns(projectId: number): Promise<Array<{ id: number; title: string }>> {
+    try {
+      return await this.request('GET', `/projects/${projectId}/columns`);
+    } catch {
+      console.warn(`[GiteaService] getProjectColumns for project ${projectId} failed`);
+      return [];
+    }
+  }
+
+  /** 把 Issue 加到 Project Board（透過 column） */
+  async addIssueToProjectBoard(projectId: number, issueId: number): Promise<void> {
+    try {
+      // 取得第一個 column（通常是「待處理」或「To Do」）
+      const columns = await this.getProjectColumns(projectId);
+      if (columns.length === 0) {
+        console.warn(`[GiteaService] No columns found for project ${projectId}`);
+        return;
+      }
+      const columnId = columns[0].id;
+      await this.request('POST', `/projects/${projectId}/columns/${columnId}/issues`, {
+        issue_id: issueId,
+      });
+    } catch (err) {
+      console.warn('[GiteaService] addIssueToProjectBoard failed:', err);
+      // Non-critical, don't re-throw
+    }
   }
 
   /** 確保 "bug" label 存在，回傳 label id */
   async ensureBugLabel(owner: string, repo: string): Promise<number> {
-    // 先列出現有 labels
     const labels = await this.request<Array<{ id: number; name: string }>>(
       'GET',
-      `/repos/${owner}/${repo}/labels`,
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/labels`,
     );
 
     const existing = labels.find(
@@ -87,46 +129,9 @@ export class GiteaService {
     // 建立新 label
     const created = await this.request<{ id: number }>(
       'POST',
-      `/repos/${owner}/${repo}/labels`,
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/labels`,
       { name: 'bug', color: '#ee0701', description: 'Bug report' },
     );
     return created.id;
-  }
-
-  /** 建立 Repo Project（Gitea 1.20+） */
-  async createProject(
-    owner: string,
-    repo: string,
-    title: string,
-  ): Promise<{ id: number }> {
-    try {
-      return await this.request('POST', `/repos/${owner}/${repo}/projects`, {
-        title,
-        board_type: 1, // basic kanban
-      });
-    } catch (err) {
-      // Gitea 版本可能不支援 project API，回傳 fallback
-      console.warn('[GiteaService] createProject failed (API may not be supported):', err);
-      throw err;
-    }
-  }
-
-  /** 把 Issue 加到 Project（Gitea 1.20+） */
-  async addIssueToProject(
-    owner: string,
-    repo: string,
-    projectId: number,
-    issueId: number,
-  ): Promise<void> {
-    try {
-      await this.request(
-        'POST',
-        `/repos/${owner}/${repo}/projects/${projectId}/issues`,
-        { issue_id: issueId },
-      );
-    } catch (err) {
-      console.warn('[GiteaService] addIssueToProject failed:', err);
-      // Non-critical, don't re-throw
-    }
   }
 }
