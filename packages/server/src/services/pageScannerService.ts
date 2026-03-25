@@ -106,6 +106,12 @@ async function callGeminiVision(
 
       const json = await res.json();
 
+      // Debug: log finish reason
+      const finishReason = json.candidates?.[0]?.finishReason;
+      if (finishReason && finishReason !== 'STOP') {
+        console.warn(`[pageScannerService] finishReason: ${finishReason}, tokens used: ${JSON.stringify(json.usageMetadata)}`);
+      }
+
       // 追蹤用量
       if (json.usageMetadata) {
         trackUsage(apiKey!, model, callType, json.usageMetadata, projectId);
@@ -141,7 +147,7 @@ class PageScannerService {
     specContent?: string
   ): Promise<ScanResult> {
     const elementsSummary = elements
-      .slice(0, 100) // 限制數量避免 prompt 過長
+      .slice(0, 30) // 限制數量避免 prompt 過長
       .map((el, i) => {
         const parts = [`${i + 1}. <${el.tag}>`];
         if (el.type) parts.push(`type="${el.type}"`);
@@ -174,20 +180,17 @@ ${specContent.slice(0, 5000)}
 `;
     }
 
-    prompt += `## 要求
-1. 識別頁面上的主要元件（表單、導航、按鈕等），最多列出 10 個
-2. 為每個重要功能產出測試案例，最多 8 個測試案例
-3. 每個測試案例最多 5 個步驟
-4. 使用頁面上實際的 CSS selector
-5. 測試案例 ID 格式：TC-001, TC-002...
-6. priority 依據功能重要性決定
-7. 只回傳純 JSON，不要包含 markdown code fence
+    prompt += `## 嚴格限制
+- components: 最多 3 個
+- testPlan: 最多 3 個
+- steps: 每個最多 3 步
+- 所有文字欄位限 15 字
+- 只回傳純 JSON，不要 markdown fence
 
-## 回傳格式
-回傳 JSON，格式如下：
+回傳 JSON：
 {
   "components": [
-    { "name": "元件名稱", "type": "form|navigation|button|link|display|input", "selector": "CSS selector", "description": "元件描述" }
+    { "name": "名稱", "type": "form|link|button|input", "selector": "CSS", "description": "簡述" }
   ],
   "testPlan": [
     {
@@ -204,15 +207,36 @@ ${specContent.slice(0, 5000)}
 }`;
 
     const text = await callGeminiVision(prompt, screenshotBase64, 'page_scan');
+    const cleaned = cleanJsonText(text);
 
     try {
-      const result = JSON.parse(cleanJsonText(text));
+      const result = JSON.parse(cleaned);
       return {
         components: result.components || [],
         testPlan: result.testPlan || [],
       };
     } catch {
-      throw new Error(`AI 回傳的 JSON 無法解析：${text.slice(0, 200)}`);
+      // 嘗試修復不完整的 JSON（截斷的情況）
+      try {
+        const lastBrace = cleaned.lastIndexOf('}');
+        if (lastBrace === -1) throw new Error('no brace');
+        const trimmed = cleaned.slice(0, lastBrace + 1);
+        // 嘗試補上缺少的結束符
+        let fixed = trimmed;
+        const openBrackets = (fixed.match(/\[/g) || []).length;
+        const closeBrackets = (fixed.match(/\]/g) || []).length;
+        for (let i = 0; i < openBrackets - closeBrackets; i++) fixed += ']';
+        const openBraces = (fixed.match(/\{/g) || []).length;
+        const closeBraces = (fixed.match(/\}/g) || []).length;
+        for (let i = 0; i < openBraces - closeBraces; i++) fixed += '}';
+        const result2 = JSON.parse(fixed);
+        return {
+          components: result2.components || [],
+          testPlan: result2.testPlan || [],
+        };
+      } catch {
+        throw new Error(`AI JSON 解析失敗 (len=${cleaned.length}, last50=${cleaned.slice(-50)})`);
+      }
     }
   }
 
