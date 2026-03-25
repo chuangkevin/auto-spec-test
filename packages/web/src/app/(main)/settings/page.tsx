@@ -29,8 +29,9 @@ interface ApiKeysResponse {
 }
 
 interface BatchImportResult {
-  imported: number;
-  skipped: number;
+  totalAdded: number;
+  skipped: string[];
+  added: string[];
 }
 
 interface GiteaStatus {
@@ -82,7 +83,7 @@ function ImportSection({ onImported }: { onImported: () => void }) {
           '/api/settings/api-keys/batch',
           { text },
         );
-        setResult(`成功匯入 ${res.imported} 把 Key，跳過 ${res.skipped} 把`);
+        setResult(`成功匯入 ${res.totalAdded} 把 Key` + (res.skipped.length > 0 ? `，跳過 ${res.skipped.length} 把` : ''));
       }
       setText('');
       onImported();
@@ -499,8 +500,9 @@ function GiteaSection() {
         /* -- 未連接狀態 -- */
         <div className="space-y-4">
           <div className="rounded-md bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-700">
-            請在 Gitea &rarr; Settings &rarr; Applications &rarr; Access Tokens 建立 Token，
-            勾選需要的權限（建議勾選 issue、organization、repository）後貼到下方。
+            請在 Gitea &rarr; Settings &rarr; Applications &rarr; Access Tokens 建立 Token，權限設定建議：
+            <strong>issue</strong>: Read and Write、<strong>organization</strong>: Read、<strong>repository</strong>: Read and Write。
+            user 權限不需要。
           </div>
 
           <div>
