@@ -14,7 +14,7 @@ export default async function testScriptRoutes(fastify: FastifyInstance) {
       reply
     ) => {
       const db = getDb();
-      const projectId = parseInt(request.params.projectId);
+      const projectId = request.params.projectId;
       const { specificationId } = request.body as any;
 
       // Get project with product name
@@ -95,7 +95,7 @@ export default async function testScriptRoutes(fastify: FastifyInstance) {
     '/api/projects/:projectId/test-scripts',
     async (request: FastifyRequest<{ Params: { projectId: string } }>) => {
       const db = getDb();
-      const projectId = parseInt(request.params.projectId);
+      const projectId = request.params.projectId;
 
       const scripts = db
         .prepare(
@@ -116,8 +116,8 @@ export default async function testScriptRoutes(fastify: FastifyInstance) {
       reply
     ) => {
       const db = getDb();
-      const projectId = parseInt(request.params.projectId);
-      const id = parseInt(request.params.id);
+      const projectId = request.params.projectId;
+      const id = request.params.id;
 
       const script = db
         .prepare(
@@ -140,7 +140,7 @@ export default async function testScriptRoutes(fastify: FastifyInstance) {
       reply
     ) => {
       const db = getDb();
-      const projectId = parseInt(request.params.projectId);
+      const projectId = request.params.projectId;
 
       const script = db
         .prepare(
@@ -166,8 +166,8 @@ export default async function testScriptRoutes(fastify: FastifyInstance) {
       reply
     ) => {
       const db = getDb();
-      const projectId = parseInt(request.params.projectId);
-      const id = parseInt(request.params.id);
+      const projectId = request.params.projectId;
+      const id = request.params.id;
       const { contentMd } = request.body as any;
 
       // Get current script to get specification_id
@@ -217,8 +217,8 @@ export default async function testScriptRoutes(fastify: FastifyInstance) {
       reply
     ) => {
       const db = getDb();
-      const projectId = parseInt(request.params.projectId);
-      const id = parseInt(request.params.id);
+      const projectId = request.params.projectId;
+      const id = request.params.id;
 
       const script = db
         .prepare(

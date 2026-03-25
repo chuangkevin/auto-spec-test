@@ -19,7 +19,7 @@ export default async function specificationRoutes(fastify: FastifyInstance) {
     '/api/projects/:projectId/specifications/upload',
     async (request: FastifyRequest<{ Params: { projectId: string } }>, reply) => {
       const db = getDb();
-      const projectId = parseInt(request.params.projectId);
+      const projectId = request.params.projectId;
 
       // Check project exists
       const project = db
@@ -108,8 +108,8 @@ export default async function specificationRoutes(fastify: FastifyInstance) {
       reply
     ) => {
       const db = getDb();
-      const projectId = parseInt(request.params.projectId);
-      const specId = parseInt(request.params.specId);
+      const projectId = request.params.projectId;
+      const specId = request.params.specId;
 
       const spec = db
         .prepare('SELECT * FROM specifications WHERE id = ? AND project_id = ?')
@@ -168,8 +168,8 @@ export default async function specificationRoutes(fastify: FastifyInstance) {
       reply
     ) => {
       const db = getDb();
-      const specId = parseInt(request.params.specId);
-      const projectId = parseInt(request.params.projectId);
+      const specId = request.params.specId;
+      const projectId = request.params.projectId;
       const { outlineMd } = request.body as any;
 
       const spec = db
@@ -192,7 +192,7 @@ export default async function specificationRoutes(fastify: FastifyInstance) {
     '/api/projects/:projectId/specifications',
     async (request: FastifyRequest<{ Params: { projectId: string } }>) => {
       const db = getDb();
-      const projectId = parseInt(request.params.projectId);
+      const projectId = request.params.projectId;
 
       const specs = db
         .prepare(
@@ -216,8 +216,8 @@ export default async function specificationRoutes(fastify: FastifyInstance) {
       reply
     ) => {
       const db = getDb();
-      const specId = parseInt(request.params.specId);
-      const projectId = parseInt(request.params.projectId);
+      const specId = request.params.specId;
+      const projectId = request.params.projectId;
 
       const spec = db
         .prepare('SELECT * FROM specifications WHERE id = ? AND project_id = ?')
