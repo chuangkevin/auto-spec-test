@@ -20,6 +20,7 @@ export interface Project {
   product_name?: string;
   description?: string;
   status: 'draft' | 'has_script' | 'testing' | 'completed';
+  gitea_repo?: string;
   created_by: number;
   created_at: string;
   updated_at: string;

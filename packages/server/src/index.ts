@@ -20,12 +20,13 @@ import projectRoutes from './routes/projects.js';
 import specificationRoutes from './routes/specifications.js';
 import testScriptRoutes from './routes/testScripts.js';
 import settingsRoutes from './routes/settings.js';
+import giteaRoutes from './routes/gitea.js';
 
 // 2. 建立 Fastify 實例
 const app = Fastify({ logger: true });
 
 // 不需要認證的路徑
-const PUBLIC_PATHS = ['/api/auth/users', '/api/auth/select', '/api/auth/register', '/api/health'];
+const PUBLIC_PATHS = ['/api/auth/users', '/api/auth/select', '/api/auth/register', '/api/health', '/api/gitea/callback'];
 
 async function start(): Promise<void> {
   // 3. 註冊 plugins
@@ -42,7 +43,7 @@ async function start(): Promise<void> {
 
   // 6. 註冊全域認證 middleware（排除公開路徑）
   app.addHook('onRequest', async (request, reply) => {
-    if (PUBLIC_PATHS.includes(request.url)) {
+    if (PUBLIC_PATHS.some((p) => request.url === p || request.url.startsWith(p + '?'))) {
       return;
     }
     await authHook(request, reply);
@@ -55,6 +56,7 @@ async function start(): Promise<void> {
   await app.register(specificationRoutes);
   await app.register(testScriptRoutes);
   await app.register(settingsRoutes);
+  await app.register(giteaRoutes);
 
   // 8. Health check
   app.get('/api/health', async () => {

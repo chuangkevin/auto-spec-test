@@ -9,6 +9,8 @@ import {
   ClipboardList,
   Loader2,
   AlertCircle,
+  GitBranch,
+  ExternalLink,
 } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
@@ -156,6 +158,13 @@ export default function ProjectDetailPage() {
             )}
             {project.description && (
               <p className="mt-1 text-sm text-gray-600">{project.description}</p>
+            )}
+            {project.gitea_repo && (
+              <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-green-50 border border-green-200 px-2.5 py-0.5 text-xs font-medium text-green-700">
+                <GitBranch size={12} />
+                {project.gitea_repo}
+                <ExternalLink size={10} />
+              </p>
             )}
           </div>
           <span
