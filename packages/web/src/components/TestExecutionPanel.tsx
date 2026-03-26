@@ -248,9 +248,9 @@ export default function TestExecutionPanel({
     );
 
     try {
-      const selectedCases = testCases.filter((tc) => tc.selected);
+      const selectedIds = testCases.filter((tc) => tc.selected).map((tc) => tc.id);
       await api.post(`/api/test-runner/${sessionId}/execute`, {
-        testCases: selectedCases,
+        testCases: selectedIds,
       });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '執行失敗');
