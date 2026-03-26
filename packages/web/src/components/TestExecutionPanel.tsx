@@ -287,9 +287,8 @@ export default function TestExecutionPanel({
         // not critical
       }
 
-      // 停在 preview 狀態，讓使用者決定要不要先手動操作
-      setStatus('preview');
-      setCurrentStep('');
+      // 直接開始探索+掃描
+      await runExploreAndScan(res.sessionId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '掃描失敗');
       setStatus('idle');
