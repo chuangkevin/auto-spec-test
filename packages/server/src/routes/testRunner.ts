@@ -477,6 +477,12 @@ async function executeTests(
     }
 
     try {
+      // 每個測試案例開始前，先導航回原始 URL（確保乾淨狀態）
+      try {
+        await browserService.navigateTo(state.sessionId, state.url);
+        await new Promise((r) => setTimeout(r, 1000)); // 等待頁面載入
+      } catch { /* ignore navigation error */ }
+
       // 逐步執行
       for (let s = 0; s < (tc.steps || []).length; s++) {
         if (state.stopped) break;
