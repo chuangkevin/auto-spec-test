@@ -80,6 +80,7 @@ export default function TestExecutionPanel({
   const [error, setError] = useState<string | null>(null);
   const [creatingProject, setCreatingProject] = useState(false);
   const [createdProjectId, setCreatedProjectId] = useState<number | null>(null);
+  const [testRunId, setTestRunId] = useState<number | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -257,9 +258,10 @@ export default function TestExecutionPanel({
 
     try {
       const selectedIds = testCases.filter((tc) => tc.selected).map((tc) => tc.id);
-      await api.post(`/api/test-runner/${sessionId}/execute`, {
+      const execRes = await api.post<{ testRunId: number }>(`/api/test-runner/${sessionId}/execute`, {
         testCases: selectedIds,
       });
+      if (execRes.testRunId) setTestRunId(execRes.testRunId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '執行失敗');
       setStatus('ready');
@@ -357,13 +359,12 @@ export default function TestExecutionPanel({
       });
       setCreatedProjectId(project.id);
 
-      // 如果有 testRunId，把 test_run 綁到專案
-      if (sessionId) {
+      // 把 test_run 綁到新專案
+      if (testRunId) {
         try {
-          const state = await api.get<{ testRunId?: number }>(
-            `/api/test-runner/${sessionId}/screenshot`
-          );
-          // 用 PUT 更新 test_run 的 project_id（如果 API 支援的話）
+          await api.put(`/api/test-runs/${testRunId}/project`, {
+            projectId: project.id,
+          });
         } catch { /* not critical */ }
       }
     } catch (err: unknown) {

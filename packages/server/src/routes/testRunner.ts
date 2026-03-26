@@ -251,6 +251,22 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
     return { ok: true };
   });
 
+  // PUT /api/test-runs/:id/project — 綁定測試記錄到專案
+  fastify.put<{
+    Params: { id: string };
+    Body: { projectId: number };
+  }>('/api/test-runs/:id/project', async (request, reply) => {
+    const db = getDb();
+    const { id } = request.params;
+    const { projectId } = request.body as any;
+
+    const run = db.prepare('SELECT id FROM test_runs WHERE id = ?').get(id);
+    if (!run) return reply.status(404).send({ error: '測試記錄不存在' });
+
+    db.prepare('UPDATE test_runs SET project_id = ? WHERE id = ?').run(projectId, id);
+    return { ok: true };
+  });
+
   // DELETE /api/test-runner/:sessionId — 關閉 session
   fastify.delete<{
     Params: { sessionId: string };
