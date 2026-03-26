@@ -10,7 +10,8 @@ export interface BrowserViewerProps {
   status: string;
   pageInfo?: { url: string; title: string };
   sessionId?: string | null;
-  interactive?: boolean; // 是否允許點擊操作
+  interactive?: boolean;
+  onScreenshotUpdate?: (base64: string) => void;
 }
 
 export default function BrowserViewer({
@@ -20,23 +21,45 @@ export default function BrowserViewer({
   pageInfo,
   sessionId,
   interactive = false,
+  onScreenshotUpdate,
 }: BrowserViewerProps) {
   const imgRef = useRef<HTMLImageElement>(null);
 
   const handleClick = useCallback(async (e: React.MouseEvent<HTMLImageElement>) => {
     if (!interactive || !sessionId || !imgRef.current) return;
 
-    const rect = imgRef.current.getBoundingClientRect();
-    // 計算點擊在圖片上的相對座標（0-1）
-    const relX = (e.clientX - rect.left) / rect.width;
-    const relY = (e.clientY - rect.top) / rect.height;
+    const img = imgRef.current;
+    const rect = img.getBoundingClientRect();
 
-    // 轉換為 Playwright 視窗座標（1280x720）
-    const x = Math.round(relX * 1280);
-    const y = Math.round(relY * 720);
+    // object-contain 的圖片在容器內的實際渲染位置
+    const natW = img.naturalWidth || 1280;
+    const natH = img.naturalHeight || 720;
+    const scale = Math.min(rect.width / natW, rect.height / natH);
+    const renderedW = natW * scale;
+    const renderedH = natH * scale;
+    const offsetX = (rect.width - renderedW) / 2;
+    const offsetY = (rect.height - renderedH) / 2;
+
+    // 點擊座標相對於圖片實際渲染區域
+    const imgX = e.clientX - rect.left - offsetX;
+    const imgY = e.clientY - rect.top - offsetY;
+
+    // 超出圖片範圍就忽略
+    if (imgX < 0 || imgY < 0 || imgX > renderedW || imgY > renderedH) return;
+
+    // 轉換為 Playwright 視窗座標
+    const x = Math.round((imgX / renderedW) * 1280);
+    const y = Math.round((imgY / renderedH) * 720);
 
     try {
       await api.post(`/api/test-runner/${sessionId}/click`, { x, y });
+      // 點擊後等一下再手動刷新截圖
+      setTimeout(async () => {
+        try {
+          const res = await api.get<{ screenshot: string }>(`/api/test-runner/${sessionId}/screenshot`);
+          if (res.screenshot && onScreenshotUpdate) onScreenshotUpdate(res.screenshot);
+        } catch {}
+      }, 500);
     } catch {
       // ignore click errors
     }

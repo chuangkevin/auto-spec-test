@@ -597,6 +597,7 @@ export default function TestExecutionPanel({
             pageInfo={pageInfo}
             sessionId={sessionId}
             interactive={status === 'manual' || status === 'preview'}
+            onScreenshotUpdate={setScreenshot}
           />
 
           {/* Control buttons */}
