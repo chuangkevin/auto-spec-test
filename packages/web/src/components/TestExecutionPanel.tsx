@@ -223,7 +223,13 @@ export default function TestExecutionPanel({
       };
 
       socket.onclose = () => {
-        console.log('[WS] disconnected');
+        console.log('[WS] disconnected, reconnecting in 2s...');
+        // 自動重連（除非已 idle）
+        setTimeout(() => {
+          if (wsRef.current === socket) {
+            connectWs(sid);
+          }
+        }, 2000);
       };
 
       wsRef.current = socket;
@@ -395,7 +401,45 @@ export default function TestExecutionPanel({
       const execRes = await api.post<{ testRunId: number }>(`/api/test-runner/${sessionId}/execute`, {
         testCases: selectedIds,
       });
-      if (execRes.testRunId) setTestRunId(execRes.testRunId);
+      if (execRes.testRunId) {
+        setTestRunId(execRes.testRunId);
+        // 啟動 polling 備案 — 每 3 秒拉截圖和結果
+        const pollId = setInterval(async () => {
+          try {
+            // 拉截圖
+            const ss = await api.get<{ screenshot: string; pageInfo: PageInfo }>(
+              `/api/test-runner/${sessionId}/screenshot`
+            );
+            setScreenshot(ss.screenshot);
+            if (ss.pageInfo) setPageInfo(ss.pageInfo);
+
+            // 拉結果
+            const results = await api.get<any[]>(
+              `/api/test-runs/${execRes.testRunId}/results`
+            );
+            if (Array.isArray(results) && results.length > 0) {
+              setTestCases(prev => prev.map(tc => {
+                const r = results.find((x: any) => x.case_id === tc.id);
+                if (r && r.status !== 'pending') {
+                  return { ...tc, status: r.status, actualResult: r.actual_result };
+                }
+                return tc;
+              }));
+            }
+
+            // 檢查是否完成
+            const run = await api.get<{ status: string }>(`/api/test-runs/${execRes.testRunId}`);
+            if (run.status === 'completed' || run.status === 'failed') {
+              setStatus('done');
+              clearInterval(pollId);
+            }
+          } catch {
+            // ignore polling errors
+          }
+        }, 3000);
+        // 60 秒後停止 polling
+        setTimeout(() => clearInterval(pollId), 180000);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '執行失敗');
       setStatus('ready');
