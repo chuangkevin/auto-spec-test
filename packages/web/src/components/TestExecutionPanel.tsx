@@ -182,7 +182,11 @@ export default function TestExecutionPanel({
               const d = msg.data as { state?: SessionStatus; status?: SessionStatus };
               const newStatus = d.state || d.status;
               if (newStatus) {
-                setStatus(newStatus);
+                // 不讓 WS 覆蓋 preview/manual 狀態（使用者正在操作）
+                setStatus(prev => {
+                  if (prev === 'preview' || prev === 'manual') return prev;
+                  return newStatus;
+                });
                 // 測試完成後自動觸發 AI 審核
                 if (newStatus === 'done' && sessionId) {
                   api.post<any>(`/api/test-runner/${sessionId}/review`, {})
