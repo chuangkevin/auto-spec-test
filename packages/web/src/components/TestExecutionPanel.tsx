@@ -50,6 +50,7 @@ interface Behavior {
 
 type SessionStatus =
   | 'idle'
+  | 'preview'
   | 'scanning'
   | 'exploring'
   | 'login_required'
@@ -281,34 +282,39 @@ export default function TestExecutionPanel({
         // not critical
       }
 
-      // 2. Detect login page
-      try {
-        const loginRes = await api.post<{ isLoginPage: boolean; reason: string }>(
-          `/api/test-runner/${res.sessionId}/detect-login`,
-        );
-        if (loginRes.isLoginPage) {
-          setLoginReason(loginRes.reason);
-          setStatus('login_required');
-          // 停在這裡，等使用者手動登入後點按鈕繼續
-          return;
-        }
-      } catch { /* ignore, continue with scan */ }
-
-      // 3. Explore page behaviors
-      await runExploreAndScan(res.sessionId);
+      // 停在 preview 狀態，讓使用者決定要不要先手動操作
+      setStatus('preview');
+      setCurrentStep('');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '掃描失敗');
       setStatus('idle');
     }
   };
 
-  /** 登入完成後繼續掃描 */
-  const handleLoginComplete = async () => {
+  /** 直接開始掃描（不需要手動操作） */
+  const handleDirectScan = async () => {
     if (!sessionId) return;
-    setLoginReason('');
+    try {
+      await runExploreAndScan(sessionId);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '掃描失敗');
+      setStatus('idle');
+    }
+  };
+
+  /** 進入手動操作模式 */
+  const handleNeedManual = () => {
+    setStatus('manual');
+    setCurrentStep('請在瀏覽器中完成操作（登入、選擇帳號等），完成後點「準備好了」');
+  };
+
+  /** 手動操作完成，開始掃描 */
+  const handleManualDone = async () => {
+    if (!sessionId) return;
+    setCurrentStep('');
 
     try {
-      // 重新截圖（使用者已登入後的畫面）
+      // 重新截圖（使用者操作後的畫面）
       try {
         const ssRes = await api.get<{ screenshot: string; pageInfo: PageInfo }>(
           `/api/test-runner/${sessionId}/screenshot`,
@@ -676,24 +682,60 @@ export default function TestExecutionPanel({
                 </div>
               )}
 
-              {status === 'login_required' && (
-                <div className="flex items-center gap-3 rounded-md border border-yellow-300 bg-yellow-50 px-4 py-2 w-full">
-                  <LogIn size={18} className="text-yellow-600" />
+              {/* Preview 狀態：讓使用者決定要不要先手動操作 */}
+              {status === 'preview' && (
+                <div className="flex flex-col gap-2 w-full">
+                  <div className="flex items-center gap-3 rounded-md border border-blue-300 bg-blue-50 px-4 py-3">
+                    <Eye size={18} className="text-blue-600" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-blue-800">
+                        頁面已載入，請選擇下一步
+                      </p>
+                      <p className="text-xs text-blue-600 mt-0.5">
+                        如果需要先登入、選擇帳號或其他操作，請先手動完成
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleNeedManual}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-yellow-400 bg-yellow-50 px-3 py-2.5 text-sm font-medium text-yellow-700 hover:bg-yellow-100"
+                    >
+                      <Hand size={14} />
+                      需要先手動操作（登入/選帳號）
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDirectScan}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-green-600 px-3 py-2.5 text-sm font-medium text-white hover:bg-green-700"
+                    >
+                      <Search size={14} />
+                      直接開始 AI 掃描
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 手動操作中 */}
+              {status === 'manual' && currentStep && (
+                <div className="flex items-center gap-3 rounded-md border border-orange-300 bg-orange-50 px-4 py-3 w-full">
+                  <Hand size={18} className="text-orange-600 animate-pulse" />
                   <div className="flex-1">
-                    <span className="text-sm font-medium text-yellow-800">
-                      偵測到登入頁面，請先手動登入
-                    </span>
-                    {loginReason && (
-                      <p className="text-xs text-yellow-600 mt-0.5">{loginReason}</p>
-                    )}
+                    <p className="text-sm font-medium text-orange-800">
+                      手動操作中 — 請在左側瀏覽器中完成操作
+                    </p>
+                    <p className="text-xs text-orange-600 mt-0.5">
+                      截圖每 0.5 秒更新一次，你可以看到即時畫面
+                    </p>
                   </div>
                   <button
                     type="button"
-                    onClick={handleLoginComplete}
-                    className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-yellow-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-yellow-700"
+                    onClick={handleManualDone}
+                    className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
                   >
                     <CheckCircle2 size={14} />
-                    登入完成，開始掃描
+                    準備好了，開始掃描
                   </button>
                 </div>
               )}
