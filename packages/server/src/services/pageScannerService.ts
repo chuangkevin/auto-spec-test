@@ -21,7 +21,7 @@ interface ComponentInfo {
 }
 
 interface TestStep {
-  action: 'click' | 'fill' | 'select' | 'wait' | 'assert' | 'navigate';
+  action: 'click' | 'fill' | 'select' | 'wait' | 'assert' | 'navigate' | 'hover' | 'press';
   target?: string; // selector
   value?: string;
   description: string;

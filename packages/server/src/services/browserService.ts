@@ -190,6 +190,24 @@ class BrowserService {
     this.sessions.delete(sessionId);
   }
 
+  /** 選擇下拉選項 */
+  async selectOption(sessionId: string, selector: string, value: string): Promise<void> {
+    const { page } = this.getSession(sessionId);
+    await page.selectOption(selector, value, { timeout: 10000 });
+  }
+
+  /** 滑鼠 hover */
+  async hover(sessionId: string, selector: string): Promise<void> {
+    const { page } = this.getSession(sessionId);
+    await page.hover(selector, { timeout: 10000 });
+  }
+
+  /** 按鍵 */
+  async pressKey(sessionId: string, key: string): Promise<void> {
+    const { page } = this.getSession(sessionId);
+    await page.keyboard.press(key);
+  }
+
   /** 關閉瀏覽器 */
   async shutdown(): Promise<void> {
     // 關閉所有 session

@@ -4,6 +4,7 @@ import { getDb } from '../db/connection.js';
 import { authHook } from '../middleware/auth.js';
 import { browserService } from '../services/browserService.js';
 import { pageScannerService } from '../services/pageScannerService.js';
+import { reportService } from '../services/reportService.js';
 
 /** 每個 session 的執行狀態 */
 interface RunnerState {
@@ -263,6 +264,152 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
     runnerStates.delete(sessionId);
     return { ok: true };
   });
+
+  // ===== 測試報告 API =====
+
+  // GET /api/test-runs — 列出所有測試記錄（支援 ?project_id 篩選）
+  fastify.get<{
+    Querystring: { project_id?: string };
+  }>('/api/test-runs', async (request, reply) => {
+    const db = getDb();
+    const { project_id } = request.query;
+
+    let sql = `SELECT id, project_id, url, status, total_cases, passed_cases, failed_cases, skipped_cases, created_at, completed_at FROM test_runs`;
+    const params: unknown[] = [];
+
+    if (project_id) {
+      sql += ' WHERE project_id = ?';
+      params.push(project_id);
+    }
+
+    sql += ' ORDER BY created_at DESC';
+
+    const runs = db.prepare(sql).all(...params);
+    return reply.send(runs);
+  });
+
+  // GET /api/test-runs/:id — 取得單個測試記錄（含 report MD）
+  fastify.get<{
+    Params: { id: string };
+  }>('/api/test-runs/:id', async (request, reply) => {
+    const db = getDb();
+    const { id } = request.params;
+
+    const run = db
+      .prepare('SELECT * FROM test_runs WHERE id = ?')
+      .get(id) as Record<string, unknown> | undefined;
+
+    if (!run) {
+      return reply.status(404).send({ error: '找不到測試記錄' });
+    }
+
+    return reply.send(run);
+  });
+
+  // GET /api/test-runs/:id/report — 下載報告 .md 檔案
+  fastify.get<{
+    Params: { id: string };
+  }>('/api/test-runs/:id/report', async (request, reply) => {
+    const db = getDb();
+    const { id } = request.params;
+
+    const run = db
+      .prepare('SELECT id, report FROM test_runs WHERE id = ?')
+      .get(id) as { id: number; report: string | null } | undefined;
+
+    if (!run) {
+      return reply.status(404).send({ error: '找不到測試記錄' });
+    }
+
+    // 如果報告尚未產出，即時產出
+    let reportMd = run.report;
+    if (!reportMd) {
+      try {
+        reportMd = reportService.generateReport(run.id);
+        reportService.saveReport(run.id, reportMd);
+      } catch (err: any) {
+        return reply.status(500).send({ error: err.message });
+      }
+    }
+
+    reply
+      .header('Content-Type', 'text/markdown; charset=utf-8')
+      .header('Content-Disposition', `attachment; filename="test-report-${id}.md"`)
+      .send(reportMd);
+  });
+
+  // GET /api/test-runs/:id/results — 取得所有測試案例結果
+  fastify.get<{
+    Params: { id: string };
+  }>('/api/test-runs/:id/results', async (request, reply) => {
+    const db = getDb();
+    const { id } = request.params;
+
+    const run = db
+      .prepare('SELECT id FROM test_runs WHERE id = ?')
+      .get(id) as { id: number } | undefined;
+
+    if (!run) {
+      return reply.status(404).send({ error: '找不到測試記錄' });
+    }
+
+    const results = db
+      .prepare('SELECT * FROM test_case_results WHERE test_run_id = ? ORDER BY id ASC')
+      .all(id);
+
+    return reply.send(results);
+  });
+
+  // GET /api/projects/:projectId/test-runs/latest — 取得最近一次測試記錄（含結果）
+  fastify.get<{
+    Params: { projectId: string };
+  }>('/api/projects/:projectId/test-runs/latest', async (request, reply) => {
+    const db = getDb();
+    const { projectId } = request.params;
+
+    const run = db
+      .prepare(
+        `SELECT id, project_id, url, status, total_cases, passed_cases, failed_cases, skipped_cases, report, created_at, completed_at
+         FROM test_runs WHERE project_id = ? ORDER BY created_at DESC LIMIT 1`
+      )
+      .get(projectId) as Record<string, unknown> | undefined;
+
+    if (!run) {
+      return reply.status(404).send({ error: '此專案尚無測試記錄' });
+    }
+
+    const results = db
+      .prepare(
+        'SELECT id, case_id, name, status, expected_result, actual_result, screenshot, error, started_at, completed_at FROM test_case_results WHERE test_run_id = ? ORDER BY id ASC'
+      )
+      .all(run.id) as any[];
+
+    // 轉換為前端期望的格式
+    return reply.send({
+      id: String(run.id),
+      projectId: run.project_id,
+      url: run.url,
+      createdAt: run.created_at,
+      completedAt: run.completed_at,
+      report: run.report,
+      summary: {
+        total: run.total_cases,
+        passed: run.passed_cases,
+        failed: run.failed_cases,
+        skipped: run.skipped_cases,
+      },
+      results: results.map((r: any) => ({
+        id: String(r.id),
+        testCaseId: r.case_id,
+        name: r.name,
+        status: r.status,
+        actualResult: r.actual_result,
+        expectedResult: r.expected_result,
+        screenshot: r.screenshot,
+        error: r.error,
+      })),
+    });
+  });
 }
 
 /** 廣播狀態變更到 WebSocket */
@@ -437,9 +584,7 @@ async function executeStep(sessionId: string, step: any): Promise<void> {
       break;
     case 'select':
       if (step.target && step.value !== undefined) {
-        await browserService.click(sessionId, step.target);
-        // 選擇 option
-        await browserService.click(sessionId, `${step.target} option[value="${step.value}"]`);
+        await browserService.selectOption(sessionId, step.target, step.value);
       }
       break;
     case 'wait':
@@ -455,8 +600,18 @@ async function executeStep(sessionId: string, step: any): Promise<void> {
       }
       break;
     case 'navigate':
+      if (step.value || step.target) {
+        await browserService.navigateTo(sessionId, step.value || step.target);
+      }
+      break;
+    case 'hover':
+      if (step.target) {
+        await browserService.hover(sessionId, step.target);
+      }
+      break;
+    case 'press':
       if (step.value) {
-        await browserService.navigateTo(sessionId, step.value);
+        await browserService.pressKey(sessionId, step.value);
       }
       break;
     default:
