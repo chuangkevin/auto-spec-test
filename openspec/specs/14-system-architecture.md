@@ -1,5 +1,5 @@
 <!-- status: done -->
-<!-- 已完成：前後端架構（Next.js + Fastify）、WebSocket、Playwright、SQLite、GeminiKeyPool、AIService、PageScanner、BrowserDriver 等核心模組均已實作。SlackNotifier 待開發。 -->
+<!-- 完整實作：Next.js 16 + Fastify + SQLite + Playwright + WebSocket（自動重連+polling備案）。Services: GeminiKeyPool（隨機選key）、AIService、PageScanner、BrowserService（互動式）、ExplorerService、SelfQuestionService、TestOrchestrator（多AI討論）、ReportService、SlackService、GiteaService。Ports: 4001(API) + 4000(Web)。 -->
 
 # 系統架構
 
