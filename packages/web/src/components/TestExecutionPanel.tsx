@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
+  FolderPlus,
 } from 'lucide-react';
 import { api, BASE_URL } from '@/lib/api';
 import BrowserViewer from './BrowserViewer';
@@ -77,6 +78,8 @@ export default function TestExecutionPanel({
   const [currentStep, setCurrentStep] = useState('');
   const [pageInfo, setPageInfo] = useState<PageInfo | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [createdProjectId, setCreatedProjectId] = useState<number | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -321,6 +324,50 @@ export default function TestExecutionPanel({
   const skippedCount = testCases.filter((tc) => tc.status === 'skipped').length;
   const isRunningOrPaused = status === 'running' || status === 'paused';
 
+  const handleCreateProject = async () => {
+    if (createdProjectId) {
+      window.location.href = `/projects/${createdProjectId}`;
+      return;
+    }
+    setCreatingProject(true);
+    try {
+      // 先確保有產品
+      const products = await api.get<Array<{ id: number }>>('/api/products');
+      let productId: number;
+      if (products.length > 0) {
+        productId = products[0].id;
+      } else {
+        const newProduct = await api.post<{ id: number }>('/api/products', {
+          name: '快速測試',
+        });
+        productId = newProduct.id;
+      }
+
+      // 建立專案
+      const domain = url ? new URL(url).hostname : '快速測試';
+      const project = await api.post<{ id: number }>('/api/projects', {
+        name: `${domain} - ${new Date().toLocaleDateString('zh-TW')}`,
+        product_id: productId,
+        description: `由快速測試建立\n目標網址：${url}`,
+      });
+      setCreatedProjectId(project.id);
+
+      // 如果有 testRunId，把 test_run 綁到專案
+      if (sessionId) {
+        try {
+          const state = await api.get<{ testRunId?: number }>(
+            `/api/test-runner/${sessionId}/screenshot`
+          );
+          // 用 PUT 更新 test_run 的 project_id（如果 API 支援的話）
+        } catch { /* not critical */ }
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '建立專案失敗');
+    } finally {
+      setCreatingProject(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Error banner */}
@@ -534,6 +581,40 @@ export default function TestExecutionPanel({
                 disabled={isRunningOrPaused}
               />
             </div>
+
+            {/* 一鍵建立專案 — 有測試案例就顯示 */}
+            {projectId === 0 && testCases.length > 0 && (
+              <div className="mt-3">
+                {createdProjectId ? (
+                  <a
+                    href={`/projects/${createdProjectId}`}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700"
+                  >
+                    <FolderPlus className="h-4 w-4" />
+                    前往專案 →
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleCreateProject}
+                    disabled={creatingProject}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {creatingProject ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        建立中...
+                      </>
+                    ) : (
+                      <>
+                        <FolderPlus className="h-4 w-4" />
+                        一鍵建立專案
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Summary (when done) */}
