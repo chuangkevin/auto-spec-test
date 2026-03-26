@@ -279,12 +279,41 @@ ${behaviorsSummary}
     }
   }
 
-  /** 執行單個測試案例，回傳結果 */
+  /** 執行單個測試案例（多 Agent 裁判機制） */
   async executeTestCase(
     testCase: any,
     screenshotBase64: string,
     pageInfo: { url: string; title: string }
   ): Promise<TestCaseResult> {
+    // 裁判 A（嚴格 - temperature 0.1）
+    const judgeA = await this.singleJudge(testCase, screenshotBase64, pageInfo, 0.1);
+
+    // 裁判 B（寬鬆 - temperature 0.5）
+    const judgeB = await this.singleJudge(testCase, screenshotBase64, pageInfo, 0.5);
+
+    if (judgeA.passed === judgeB.passed) {
+      // 一致 → 直接採用
+      return {
+        passed: judgeA.passed,
+        actualResult: `[多Agent一致] ${judgeA.actualResult}`,
+      };
+    }
+
+    // 分歧 → 裁判 C 仲裁
+    const judgeC = await this.arbitrate(testCase, screenshotBase64, pageInfo, judgeA, judgeB);
+    return {
+      passed: judgeC.passed,
+      actualResult: `[仲裁決定] ${judgeC.actualResult}\n裁判A(嚴格): ${judgeA.passed ? 'PASS' : 'FAIL'} - ${judgeA.actualResult}\n裁判B(寬鬆): ${judgeB.passed ? 'PASS' : 'FAIL'} - ${judgeB.actualResult}`,
+    };
+  }
+
+  /** 單一裁判判斷 */
+  private async singleJudge(
+    testCase: any,
+    screenshotBase64: string,
+    pageInfo: { url: string; title: string },
+    temperature: number
+  ): Promise<{ passed: boolean; actualResult: string }> {
     const prompt = `你是一個前端測試工程師。請根據以下測試案例和目前頁面截圖，判斷測試是否通過。
 
 ## 頁面資訊
@@ -306,9 +335,8 @@ ${behaviorsSummary}
   "actualResult": "實際觀察到的結果描述"
 }`;
 
-    const text = await callGeminiVision(prompt, screenshotBase64, 'test_evaluate');
-
     try {
+      const text = await callGeminiVision(prompt, screenshotBase64, 'test_evaluate', undefined, temperature);
       const result = JSON.parse(cleanJsonText(text));
       return {
         passed: !!result.passed,
@@ -318,7 +346,51 @@ ${behaviorsSummary}
       return {
         passed: false,
         actualResult: '無法解析 AI 回傳結果',
-        error: text.slice(0, 200),
+      };
+    }
+  }
+
+  /** 仲裁裁判：在兩個裁判分歧時做最終決定 */
+  private async arbitrate(
+    testCase: any,
+    screenshotBase64: string,
+    pageInfo: { url: string; title: string },
+    judgeA: { passed: boolean; actualResult: string },
+    judgeB: { passed: boolean; actualResult: string }
+  ): Promise<{ passed: boolean; actualResult: string }> {
+    const prompt = `你是一個資深測試仲裁裁判。兩個測試裁判對同一個測試案例產生分歧，請你做最終判定。
+
+## 頁面資訊
+- URL: ${pageInfo.url}
+- 標題: ${pageInfo.title}
+
+## 測試案例
+- ID: ${testCase.id}
+- 名稱: ${testCase.name}
+- 預期結果: ${testCase.expectedResult}
+
+## 兩位裁判的判定
+裁判A（嚴格）判定：${judgeA.passed ? 'PASS' : 'FAIL'} — ${judgeA.actualResult}
+裁判B（寬鬆）判定：${judgeB.passed ? 'PASS' : 'FAIL'} — ${judgeB.actualResult}
+
+## 要求
+觀察截圖，綜合兩位裁判的意見，做出最終判定。
+
+只回傳 JSON：
+{ "passed": true/false, "actualResult": "仲裁理由(30字內)" }`;
+
+    try {
+      const text = await callGeminiVision(prompt, screenshotBase64, 'test_arbitrate', undefined, 0.2);
+      const result = JSON.parse(cleanJsonText(text));
+      return {
+        passed: !!result.passed,
+        actualResult: result.actualResult || '仲裁無法判斷',
+      };
+    } catch {
+      // 仲裁失敗時，偏向嚴格裁判（保守判定）
+      return {
+        passed: judgeA.passed,
+        actualResult: `仲裁失敗，採用嚴格裁判結果: ${judgeA.actualResult}`,
       };
     }
   }

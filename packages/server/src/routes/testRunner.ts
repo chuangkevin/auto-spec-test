@@ -7,6 +7,7 @@ import { explorerService } from '../services/explorerService.js';
 import { pageScannerService } from '../services/pageScannerService.js';
 import { reportService } from '../services/reportService.js';
 import { selfQuestionService } from '../services/selfQuestionService.js';
+import { testOrchestrator } from '../services/testOrchestrator.js';
 
 /** 每個 session 的執行狀態 */
 interface RunnerState {
@@ -21,6 +22,7 @@ interface RunnerState {
     type: string;
     description: string;
   }>;
+  discussion?: Array<{ role: string; message: string }>;
   testRunId?: number;
   currentCaseIndex: number;
   paused: boolean;
@@ -207,6 +209,58 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
     }
   });
 
+  // POST /api/test-runner/:sessionId/discuss — 多 AI 討論測試策略
+  fastify.post<{
+    Params: { sessionId: string };
+  }>('/api/test-runner/:sessionId/discuss', async (request, reply) => {
+    const { sessionId } = request.params;
+    const state = runnerStates.get(sessionId);
+    if (!state) return reply.status(404).send({ error: 'Session 不存在' });
+
+    try {
+      const screenshot = await browserService.screenshot(sessionId);
+      const elements = await browserService.getInteractiveElements(sessionId);
+      const pageInfo = await browserService.getPageInfo(sessionId);
+
+      const discussion = await testOrchestrator.discuss(
+        screenshot, elements, state.behaviors || [], pageInfo
+      );
+
+      state.discussion = discussion;
+      return { discussion };
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message });
+    }
+  });
+
+  // POST /api/test-runner/:sessionId/review — 驗證結果 + 建議調整
+  fastify.post<{
+    Params: { sessionId: string };
+  }>('/api/test-runner/:sessionId/review', async (request, reply) => {
+    const { sessionId } = request.params;
+    const state = runnerStates.get(sessionId);
+    if (!state) return reply.status(404).send({ error: 'Session 不存在' });
+    if (!state.testRunId) return reply.status(400).send({ error: '尚未執行測試' });
+
+    try {
+      const db = getDb();
+      const results = db.prepare(
+        'SELECT case_id as caseId, status, actual_result as actualResult, error FROM test_case_results WHERE test_run_id = ?'
+      ).all(state.testRunId) as any[];
+
+      const screenshot = await browserService.screenshot(sessionId);
+      const review = await testOrchestrator.reviewResults(
+        state.scanResult?.testPlan || [],
+        results.map((r: any) => ({ caseId: r.caseId, passed: r.status === 'passed', actualResult: r.actualResult || '', error: r.error })),
+        screenshot
+      );
+
+      return review;
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message });
+    }
+  });
+
   // POST /api/test-runner/:sessionId/scan — AI 掃描頁面
   fastify.post<{
     Params: { sessionId: string };
@@ -227,11 +281,17 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
       const elements = await browserService.getInteractiveElements(sessionId);
       const pageInfo = await browserService.getPageInfo(sessionId);
 
+      // 如果有討論結果，加入 specContent
+      let enrichedSpec = state.specContent || '';
+      if (state.discussion && state.discussion.length > 0) {
+        enrichedSpec += '\n\n' + testOrchestrator.formatDiscussionForPrompt(state.discussion);
+      }
+
       const scanResult = await pageScannerService.scanPage(
         screenshot,
         elements,
         pageInfo,
-        state.specContent,
+        enrichedSpec || undefined,
         state.behaviors
       );
 

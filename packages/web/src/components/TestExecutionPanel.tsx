@@ -99,6 +99,8 @@ export default function TestExecutionPanel({
   const [testRunId, setTestRunId] = useState<number | null>(null);
   const [behaviors, setBehaviors] = useState<Behavior[]>([]);
   const [loginReason, setLoginReason] = useState<string>('');
+  const [discussion, setDiscussion] = useState<Array<{ role: string; message: string }>>([]);
+  const [reviewResult, setReviewResult] = useState<any>(null);
   const [existingProject, setExistingProject] = useState<{
     id: number; name: string; testRunCount: number;
   } | null>(null);
@@ -178,7 +180,15 @@ export default function TestExecutionPanel({
             case 'status': {
               const d = msg.data as { state?: SessionStatus; status?: SessionStatus };
               const newStatus = d.state || d.status;
-              if (newStatus) setStatus(newStatus);
+              if (newStatus) {
+                setStatus(newStatus);
+                // 測試完成後自動觸發 AI 審核
+                if (newStatus === 'done' && sessionId) {
+                  api.post<any>(`/api/test-runner/${sessionId}/review`, {})
+                    .then(review => setReviewResult(review))
+                    .catch(() => {});
+                }
+              }
               break;
             }
             case 'components': {
@@ -227,6 +237,8 @@ export default function TestExecutionPanel({
     setStatus('scanning');
     setComponents([]);
     setTestCases([]);
+    setBehaviors([]);
+    setLoginReason('');
     setScreenshot(null);
     setCurrentStep('');
     setCreatedProjectId(null);
@@ -250,7 +262,7 @@ export default function TestExecutionPanel({
     }
 
     try {
-      // Start session
+      // 1. Start session
       const res = await api.post<{ sessionId: string }>(
         '/api/test-runner/start',
         { url: url.trim(), projectId: existingProject?.id || projectId, specContent },
@@ -258,7 +270,7 @@ export default function TestExecutionPanel({
       setSessionId(res.sessionId);
       connectWs(res.sessionId);
 
-      // Fetch initial screenshot before scan
+      // Fetch initial screenshot
       try {
         const ssRes = await api.get<{ screenshot: string; pageInfo: PageInfo }>(
           `/api/test-runner/${res.sessionId}/screenshot`,
@@ -269,19 +281,86 @@ export default function TestExecutionPanel({
         // not critical
       }
 
-      // Trigger scan
-      const scanRes = await api.post<{
-        components: Component[];
-        testPlan: TestCase[];
-      }>(`/api/test-runner/${res.sessionId}/scan`, { url: url.trim() });
+      // 2. Detect login page
+      try {
+        const loginRes = await api.post<{ isLoginPage: boolean; reason: string }>(
+          `/api/test-runner/${res.sessionId}/detect-login`,
+        );
+        if (loginRes.isLoginPage) {
+          setLoginReason(loginRes.reason);
+          setStatus('login_required');
+          // 停在這裡，等使用者手動登入後點按鈕繼續
+          return;
+        }
+      } catch { /* ignore, continue with scan */ }
 
-      setComponents(scanRes.components);
-      setTestCases(scanRes.testPlan.map((tc) => ({ ...tc, selected: true })));
-      setStatus('ready');
+      // 3. Explore page behaviors
+      await runExploreAndScan(res.sessionId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '掃描失敗');
       setStatus('idle');
     }
+  };
+
+  /** 登入完成後繼續掃描 */
+  const handleLoginComplete = async () => {
+    if (!sessionId) return;
+    setLoginReason('');
+
+    try {
+      // 重新截圖（使用者已登入後的畫面）
+      try {
+        const ssRes = await api.get<{ screenshot: string; pageInfo: PageInfo }>(
+          `/api/test-runner/${sessionId}/screenshot`,
+        );
+        setScreenshot(ssRes.screenshot);
+        setPageInfo(ssRes.pageInfo);
+      } catch { /* not critical */ }
+
+      await runExploreAndScan(sessionId);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '掃描失敗');
+      setStatus('idle');
+    }
+  };
+
+  /** 探索 + 掃描流程（共用邏輯） */
+  const runExploreAndScan = async (sid: string) => {
+    // 3. Explore page behaviors
+    setStatus('exploring');
+    setCurrentStep('AI 正在探索頁面行為...');
+    try {
+      const exploreRes = await api.post<{ behaviors: Behavior[] }>(
+        `/api/test-runner/${sid}/explore`,
+      );
+      setBehaviors(exploreRes.behaviors || []);
+    } catch {
+      // 探索失敗不阻斷流程
+    }
+
+    // 4. Multi-AI Discussion
+    setCurrentStep('AI 團隊正在討論測試策略...');
+    try {
+      const discussRes = await api.post<{
+        discussion: Array<{ role: string; message: string }>;
+      }>(`/api/test-runner/${sid}/discuss`);
+      setDiscussion(discussRes.discussion || []);
+    } catch {
+      // 討論失敗不阻斷
+    }
+
+    // 5. Trigger scan (with discussion context)
+    setStatus('scanning');
+    setCurrentStep('AI 正在產出測試計畫...');
+    const scanRes = await api.post<{
+      components: Component[];
+      testPlan: TestCase[];
+    }>(`/api/test-runner/${sid}/scan`, { url: url.trim() });
+
+    setComponents(scanRes.components);
+    setTestCases(scanRes.testPlan.map((tc) => ({ ...tc, selected: true })));
+    setCurrentStep('');
+    setStatus('ready');
   };
 
   const handleStartTest = async () => {
@@ -359,6 +438,8 @@ export default function TestExecutionPanel({
     setStatus('idle');
     setComponents([]);
     setTestCases([]);
+    setBehaviors([]);
+    setLoginReason('');
     setCurrentStep('');
     setPageInfo(undefined);
     setError(null);
@@ -595,6 +676,35 @@ export default function TestExecutionPanel({
                 </div>
               )}
 
+              {status === 'login_required' && (
+                <div className="flex items-center gap-3 rounded-md border border-yellow-300 bg-yellow-50 px-4 py-2 w-full">
+                  <LogIn size={18} className="text-yellow-600" />
+                  <div className="flex-1">
+                    <span className="text-sm font-medium text-yellow-800">
+                      偵測到登入頁面，請先手動登入
+                    </span>
+                    {loginReason && (
+                      <p className="text-xs text-yellow-600 mt-0.5">{loginReason}</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleLoginComplete}
+                    className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-yellow-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-yellow-700"
+                  >
+                    <CheckCircle2 size={14} />
+                    登入完成，開始掃描
+                  </button>
+                </div>
+              )}
+
+              {status === 'exploring' && (
+                <div className="flex items-center gap-2 text-sm text-blue-600">
+                  <MousePointerClick size={16} className="animate-pulse" />
+                  AI 正在探索頁面行為...
+                </div>
+              )}
+
               {status === 'scanning' && (
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <Loader2 size={16} className="animate-spin" />
@@ -629,6 +739,125 @@ export default function TestExecutionPanel({
                       {comp.type}
                     </span>
                     <span className="truncate">{comp.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Behaviors exploration results */}
+          {behaviors.length > 0 && (
+            <div className="rounded-lg border border-gray-200 bg-white">
+              <div className="border-b border-gray-100 px-4 py-2.5">
+                <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+                  <Eye size={14} className="text-purple-500" />
+                  行為探索結果
+                  <span className="ml-1 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-600">
+                    {behaviors.filter(b => b.type !== 'no_effect').length}/{behaviors.length}
+                  </span>
+                </h3>
+              </div>
+              <div className="max-h-48 overflow-y-auto px-4 py-2 space-y-1">
+                {behaviors.map((b, i) => {
+                  const icon = (() => {
+                    switch (b.type) {
+                      case 'toggle': return <ToggleLeft size={12} className="text-green-500" />;
+                      case 'navigation': return <ArrowRightLeft size={12} className="text-blue-500" />;
+                      case 'modal': return <Maximize2 size={12} className="text-orange-500" />;
+                      case 'dropdown': return <ChevronDown size={12} className="text-indigo-500" />;
+                      case 'form_submit': return <CheckCircle2 size={12} className="text-teal-500" />;
+                      default: return <MinusCircle size={12} className="text-gray-400" />;
+                    }
+                  })();
+                  const typeLabel = (() => {
+                    switch (b.type) {
+                      case 'toggle': return 'toggle';
+                      case 'navigation': return 'nav';
+                      case 'modal': return 'modal';
+                      case 'dropdown': return 'dropdown';
+                      case 'form_submit': return 'submit';
+                      default: return 'no_effect';
+                    }
+                  })();
+                  const typeBg = (() => {
+                    switch (b.type) {
+                      case 'toggle': return 'bg-green-100 text-green-700';
+                      case 'navigation': return 'bg-blue-100 text-blue-700';
+                      case 'modal': return 'bg-orange-100 text-orange-700';
+                      case 'dropdown': return 'bg-indigo-100 text-indigo-700';
+                      case 'form_submit': return 'bg-teal-100 text-teal-700';
+                      default: return 'bg-gray-100 text-gray-500';
+                    }
+                  })();
+                  return (
+                    <div
+                      key={i}
+                      className="flex items-center gap-2 rounded px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                    >
+                      {icon}
+                      <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] ${typeBg}`}>
+                        {typeLabel}
+                      </span>
+                      <span className="truncate" title={b.selector}>{b.description}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* AI Discussion */}
+          {discussion.length > 0 && (
+            <div className="rounded-lg border border-indigo-200 bg-white overflow-hidden">
+              <div className="flex items-center gap-2 bg-indigo-50 px-4 py-2">
+                <Eye size={14} className="text-indigo-600" />
+                <h3 className="text-xs font-semibold text-indigo-800">
+                  AI 團隊討論
+                </h3>
+              </div>
+              <div className="max-h-48 overflow-y-auto px-4 py-2 space-y-2">
+                {discussion.map((d, i) => {
+                  const roleLabel: Record<string, string> = {
+                    qa_lead: '🎯 QA Lead',
+                    frontend_expert: '💻 前端專家',
+                    ux_specialist: '🎨 UX 專家',
+                    security_tester: '🔒 安全測試',
+                  };
+                  return (
+                    <div key={i} className="rounded bg-gray-50 p-2 text-xs">
+                      <div className="font-medium text-gray-700 mb-1">
+                        {roleLabel[d.role] || d.role}
+                      </div>
+                      <div className="text-gray-600 whitespace-pre-line">{d.message}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Review Result (post-test) */}
+          {reviewResult && (
+            <div className="rounded-lg border border-amber-200 bg-white overflow-hidden">
+              <div className="flex items-center gap-2 bg-amber-50 px-4 py-2">
+                <AlertTriangle size={14} className="text-amber-600" />
+                <h3 className="text-xs font-semibold text-amber-800">
+                  AI 審核結果
+                </h3>
+              </div>
+              <div className="px-4 py-2 space-y-1 text-xs">
+                <p className="text-gray-700">{reviewResult.summary}</p>
+                {reviewResult.adjustments?.map((adj: any, i: number) => (
+                  <div key={i} className="flex items-center gap-2 rounded px-2 py-1 bg-gray-50">
+                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                      adj.action === 'keep' ? 'bg-red-100 text-red-700' :
+                      adj.action === 'retry' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-gray-100 text-gray-600'
+                    }`}>
+                      {adj.action === 'keep' ? '真 Bug' : adj.action === 'retry' ? '建議重試' : '移除'}
+                    </span>
+                    <span className="font-mono">{adj.caseId}</span>
+                    <span className="text-gray-500">{adj.reason}</span>
                   </div>
                 ))}
               </div>
