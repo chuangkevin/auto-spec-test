@@ -30,7 +30,7 @@ class BrowserService {
   }
 
   /** 取得 session（內部用） */
-  private getSession(sessionId: string): Session {
+  getSession(sessionId: string): Session {
     const session = this.sessions.get(sessionId);
     if (!session) {
       throw new Error(`Session ${sessionId} 不存在`);

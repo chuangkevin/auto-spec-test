@@ -452,6 +452,63 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
     return { ok: true };
   });
 
+  // POST /api/test-runner/:sessionId/click — 使用者遠端點擊
+  fastify.post<{
+    Params: { sessionId: string };
+    Body: { x: number; y: number };
+  }>('/api/test-runner/:sessionId/click', async (request, reply) => {
+    const { sessionId } = request.params;
+    const state = runnerStates.get(sessionId);
+    if (!state) return reply.status(404).send({ error: 'Session 不存在' });
+
+    const { x, y } = request.body as any;
+    try {
+      const { page } = browserService.getSession(sessionId);
+      await page.mouse.click(x, y);
+      return { ok: true };
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message });
+    }
+  });
+
+  // POST /api/test-runner/:sessionId/type — 使用者遠端輸入文字
+  fastify.post<{
+    Params: { sessionId: string };
+    Body: { text: string };
+  }>('/api/test-runner/:sessionId/type', async (request, reply) => {
+    const { sessionId } = request.params;
+    const state = runnerStates.get(sessionId);
+    if (!state) return reply.status(404).send({ error: 'Session 不存在' });
+
+    const { text } = request.body as any;
+    try {
+      const { page } = browserService.getSession(sessionId);
+      await page.keyboard.type(text);
+      return { ok: true };
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message });
+    }
+  });
+
+  // POST /api/test-runner/:sessionId/key — 使用者遠端按鍵
+  fastify.post<{
+    Params: { sessionId: string };
+    Body: { key: string };
+  }>('/api/test-runner/:sessionId/key', async (request, reply) => {
+    const { sessionId } = request.params;
+    const state = runnerStates.get(sessionId);
+    if (!state) return reply.status(404).send({ error: 'Session 不存在' });
+
+    const { key } = request.body as any;
+    try {
+      const { page } = browserService.getSession(sessionId);
+      await page.keyboard.press(key);
+      return { ok: true };
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message });
+    }
+  });
+
   // DELETE /api/test-runner/:sessionId — 關閉 session
   fastify.delete<{
     Params: { sessionId: string };

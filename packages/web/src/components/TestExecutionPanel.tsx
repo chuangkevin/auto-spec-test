@@ -595,6 +595,8 @@ export default function TestExecutionPanel({
             currentStep={currentStep}
             status={status}
             pageInfo={pageInfo}
+            sessionId={sessionId}
+            interactive={status === 'manual' || status === 'preview'}
           />
 
           {/* Control buttons */}
