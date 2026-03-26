@@ -1,4 +1,4 @@
-export const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+export const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
 
 async function request<T>(
   method: string,

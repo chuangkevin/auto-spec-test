@@ -58,7 +58,7 @@ function wsBaseUrl(): string {
     const proto = u.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${proto}//${u.host}`;
   } catch {
-    return 'ws://localhost:3001';
+    return BASE_URL.replace('http', 'ws');
   }
 }
 
