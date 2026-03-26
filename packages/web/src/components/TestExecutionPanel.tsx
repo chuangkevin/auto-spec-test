@@ -130,16 +130,21 @@ export default function TestExecutionPanel({
             case 'result': {
               const d = msg.data as {
                 testCaseId: string;
-                status: 'passed' | 'failed' | 'skipped';
+                status?: 'passed' | 'failed' | 'skipped';
+                passed?: boolean;
+                skipped?: boolean;
                 actualResult?: string;
                 screenshot?: string;
               };
+              // Backend sends { passed: bool } or { status: string }
+              const resultStatus: 'passed' | 'failed' | 'skipped' =
+                d.status || (d.skipped ? 'skipped' : d.passed ? 'passed' : 'failed');
               setTestCases((prev) =>
                 prev.map((tc) =>
                   tc.id === d.testCaseId
                     ? {
                         ...tc,
-                        status: d.status,
+                        status: resultStatus,
                         actualResult: d.actualResult,
                         screenshot: d.screenshot ?? tc.screenshot,
                       }

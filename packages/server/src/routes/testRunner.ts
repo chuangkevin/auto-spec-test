@@ -496,6 +496,14 @@ async function executeTests(
 
         await executeStep(state.sessionId, step);
 
+        // 每步完成後強制送截圖（讓使用者看到瀏覽器變化）
+        try {
+          const stepScreenshot = await browserService.screenshot(state.sessionId);
+          if (state.broadcast) {
+            state.broadcast({ type: 'screenshot', data: stepScreenshot });
+          }
+        } catch { /* ignore */ }
+
         if (state.broadcast) {
           state.broadcast({
             type: 'step',
