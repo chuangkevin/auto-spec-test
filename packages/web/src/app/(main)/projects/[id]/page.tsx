@@ -788,38 +788,50 @@ function TestReportTab({ projectId }: { projectId: number }) {
         )
       : 0;
 
-  const handleDownloadMd = () => {
+  const handleDownloadMd = async () => {
     if (!testRun) return;
-    const lines: string[] = [
-      `# 測試報告`,
-      '',
-      `- 測試時間：${new Date(testRun.createdAt).toLocaleString('zh-TW')}`,
-      `- 目標 URL：${testRun.url}`,
-      `- 總數：${testRun.summary.total}`,
-      `- 通過：${testRun.summary.passed}`,
-      `- 失敗：${testRun.summary.failed}`,
-      `- 跳過：${testRun.summary.skipped}`,
-      `- 通過率：${passRate}%`,
-      '',
-      '## 測試結果',
-      '',
-    ];
-
-    for (const r of testRun.results) {
-      const icon =
-        r.status === 'passed' ? '✅' : r.status === 'failed' ? '❌' : '⏭';
-      lines.push(`### ${icon} ${r.testCaseId} ${r.name}`);
-      lines.push(`- 狀態：${r.status}`);
-      if (r.actualResult) lines.push(`- 實際結果：${r.actualResult}`);
-      lines.push('');
+    // 從後端下載伺服器端產出的完整 Markdown 報告
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    try {
+      const res = await fetch(`${BASE_URL}/api/test-runs/${testRun.id}/report`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('下載報告失敗');
+      const md = await res.text();
+      const blob = new Blob([md], { type: 'text/markdown' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `test-report-${testRun.id}.md`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      // 後備方案：使用前端資料產出報告
+      const lines: string[] = [
+        `# 測試報告`,
+        '',
+        `- 測試時間：${new Date(testRun.createdAt).toLocaleString('zh-TW')}`,
+        `- 目標網址：${testRun.url}`,
+        `- 測試結果：通過 ${testRun.summary.passed} / 失敗 ${testRun.summary.failed} / 跳過 ${testRun.summary.skipped}`,
+        `- 通過率：${passRate}%`,
+        '',
+        '## 測試案例詳細結果',
+        '',
+      ];
+      for (const r of testRun.results) {
+        const icon =
+          r.status === 'passed' ? '✅' : r.status === 'failed' ? '❌' : '⏭';
+        lines.push(`### ${r.testCaseId}: ${r.name} — ${icon} ${r.status.toUpperCase()}`);
+        if (r.actualResult) lines.push(`- 實際結果：${r.actualResult}`);
+        lines.push('');
+      }
+      const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `test-report-${testRun.id}.md`;
+      a.click();
+      URL.revokeObjectURL(a.href);
     }
-
-    const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `test-report-${testRun.id}.md`;
-    a.click();
-    URL.revokeObjectURL(a.href);
   };
 
   const handlePushGitea = async () => {

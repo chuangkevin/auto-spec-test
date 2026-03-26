@@ -8,6 +8,10 @@ import {
   invalidateKeyCache,
 } from '../services/geminiKeys.js';
 import { getDb } from '../db/connection.js';
+import {
+  getSettings as getSlackSettings,
+  sendTestMessage,
+} from '../services/slackService.js';
 
 export default async function settingsRoutes(fastify: FastifyInstance) {
   // Get API keys (masked) with usage stats
@@ -176,6 +180,65 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       ).run(key, value);
 
       return { key, value };
+    }
+  );
+
+  // ---- Slack 設定 ----
+
+  // 讀取 Slack 設定
+  fastify.get('/api/settings/slack', async () => {
+    return getSlackSettings();
+  });
+
+  // 儲存 Slack 設定
+  fastify.put(
+    '/api/settings/slack',
+    async (
+      request: FastifyRequest<{
+        Body: { webhookUrl: string; notifyComplete: boolean; notifyError: boolean };
+      }>,
+      reply
+    ) => {
+      const db = getDb();
+      const { webhookUrl, notifyComplete, notifyError } = request.body as any;
+
+      const upsert = db.prepare(
+        `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+      );
+
+      const updateAll = db.transaction(() => {
+        upsert.run('slack_webhook_url', (webhookUrl || '').trim());
+        upsert.run('slack_notify_complete', String(!!notifyComplete));
+        upsert.run('slack_notify_error', String(!!notifyError));
+      });
+
+      updateAll();
+      return { success: true };
+    }
+  );
+
+  // 發送測試訊息
+  fastify.post(
+    '/api/settings/slack/test',
+    async (
+      request: FastifyRequest<{ Body: { webhookUrl: string } }>,
+      reply
+    ) => {
+      const { webhookUrl } = request.body as any;
+
+      if (!webhookUrl || typeof webhookUrl !== 'string') {
+        return reply.status(400).send({ error: '請提供 Webhook URL' });
+      }
+
+      try {
+        await sendTestMessage(webhookUrl.trim());
+        return { success: true };
+      } catch (err: any) {
+        return reply
+          .status(400)
+          .send({ error: err.message || '發送失敗' });
+      }
     }
   );
 }

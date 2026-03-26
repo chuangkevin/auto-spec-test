@@ -8,6 +8,7 @@ import {
   Globe,
   FolderKanban,
   Package,
+  Archive,
   Settings,
   LogOut,
   Menu,
@@ -20,6 +21,7 @@ const navItems = [
   { href: '/quick-test', label: '快速測試', icon: Globe },
   { href: '/projects', label: '測試專案', icon: FolderKanban },
   { href: '/products', label: '產品管理', icon: Package },
+  { href: '/specs', label: '規格書庫', icon: Archive },
   { href: '/settings', label: '系統設定', icon: Settings },
 ];
 

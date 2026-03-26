@@ -242,4 +242,58 @@ export default async function specificationRoutes(fastify: FastifyInstance) {
       return { success: true };
     }
   );
+
+  // ─── Cross-project specification library ───
+
+  /** GET /api/specifications — 列出所有規格書（跨專案） */
+  fastify.get(
+    '/api/specifications',
+    async (request: FastifyRequest<{ Querystring: { product_id?: string } }>) => {
+      const db = getDb();
+      const productId = (request.query as any).product_id;
+
+      let sql = `
+        SELECT s.id, s.original_files, s.parsed_outline_md, s.version, s.created_at,
+               p.id as project_id, p.name as project_name,
+               pr.name as product_name,
+               u.username as uploaded_by_name
+        FROM specifications s
+        LEFT JOIN projects p ON s.project_id = p.id
+        LEFT JOIN products pr ON p.product_id = pr.id
+        LEFT JOIN users u ON s.uploaded_by = u.id
+      `;
+      const params: any[] = [];
+      if (productId) {
+        sql += ' WHERE p.product_id = ?';
+        params.push(productId);
+      }
+      sql += ' ORDER BY s.created_at DESC';
+
+      const specs = db.prepare(sql).all(...params) as any[];
+      return specs.map((s) => ({
+        ...s,
+        original_files: JSON.parse(s.original_files || '[]'),
+      }));
+    }
+  );
+
+  /** DELETE /api/specifications/:id — 刪除規格書（跨專案入口） */
+  fastify.delete(
+    '/api/specifications/:id',
+    async (request: FastifyRequest<{ Params: { id: string } }>, reply) => {
+      const db = getDb();
+      const id = request.params.id;
+
+      const spec = db.prepare('SELECT * FROM specifications WHERE id = ?').get(id) as any;
+      if (!spec) return reply.status(404).send({ error: '規格書不存在' });
+
+      const files: Array<{ path: string }> = JSON.parse(spec.original_files || '[]');
+      for (const f of files) {
+        try { await unlink(f.path); } catch {}
+      }
+
+      db.prepare('DELETE FROM specifications WHERE id = ?').run(id);
+      return { success: true };
+    }
+  );
 }

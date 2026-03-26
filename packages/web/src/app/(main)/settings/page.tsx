@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Key, Plus, Trash2, Shield, Loader2, AlertTriangle, GitBranch, ExternalLink, Check, Unlink } from 'lucide-react';
+import { Key, Plus, Trash2, Shield, Loader2, AlertTriangle, GitBranch, ExternalLink, Check, Unlink, MessageSquare, Send } from 'lucide-react';
 import { api } from '@/lib/api';
 
 // --- 型別定義 ---
@@ -558,6 +558,190 @@ function GiteaSection() {
   );
 }
 
+// --- Slack 整合區塊 ---
+
+function SlackSection() {
+  const [loading, setLoading] = useState(true);
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [notifyComplete, setNotifyComplete] = useState(false);
+  const [notifyError, setNotifyError] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await api.get<{
+          webhookUrl: string;
+          notifyComplete: boolean;
+          notifyError: boolean;
+        }>('/api/settings/slack');
+        setWebhookUrl(data.webhookUrl || '');
+        setNotifyComplete(data.notifyComplete);
+        setNotifyError(data.notifyError);
+      } catch {
+        // 靜默處理
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError('');
+    setSuccessMsg('');
+    try {
+      await api.put('/api/settings/slack', {
+        webhookUrl,
+        notifyComplete,
+        notifyError,
+      });
+      setSuccessMsg('Slack 設定已儲存');
+      setTimeout(() => setSuccessMsg(''), 5000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '儲存失敗');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTest = async () => {
+    if (!webhookUrl.trim()) {
+      setError('請先填入 Webhook URL');
+      return;
+    }
+    setTesting(true);
+    setError('');
+    setSuccessMsg('');
+    try {
+      await api.post('/api/settings/slack/test', { webhookUrl: webhookUrl.trim() });
+      setSuccessMsg('測試訊息已發送，請檢查 Slack 頻道');
+      setTimeout(() => setSuccessMsg(''), 5000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '發送測試訊息失敗');
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="rounded-lg border border-purple-200 bg-white p-6">
+        <div className="flex items-center gap-2 text-sm text-gray-500">
+          <Loader2 size={16} className="animate-spin" />
+          載入 Slack 設定...
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-purple-200 bg-white p-6">
+      <div className="mb-4 flex items-center gap-2">
+        <MessageSquare size={20} className="text-purple-600" />
+        <h2 className="text-lg font-semibold text-gray-800">Slack 通知</h2>
+      </div>
+
+      {successMsg && (
+        <div className="mb-4 flex items-center gap-2 rounded-md bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
+          <Check size={16} />
+          {successMsg}
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-4 flex items-center gap-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+          <AlertTriangle size={16} />
+          {error}
+        </div>
+      )}
+
+      <div className="space-y-4">
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">
+            Webhook URL
+          </label>
+          <input
+            type="url"
+            value={webhookUrl}
+            onChange={(e) => setWebhookUrl(e.target.value)}
+            placeholder="https://hooks.slack.com/services/T.../B.../..."
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+          />
+          <p className="mt-1 text-xs text-gray-400">
+            在 Slack App 設定中建立 Incoming Webhook 取得此 URL
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={notifyComplete}
+              onChange={(e) => setNotifyComplete(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+            />
+            <span className="text-sm text-gray-700">測試完成時通知</span>
+          </label>
+
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={notifyError}
+              onChange={(e) => setNotifyError(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+            />
+            <span className="text-sm text-gray-700">測試失敗時通知</span>
+          </label>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="inline-flex items-center gap-2 rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50 transition-colors"
+          >
+            {saving ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                儲存中...
+              </>
+            ) : (
+              <>
+                <Check size={14} />
+                儲存設定
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleTest}
+            disabled={testing || !webhookUrl.trim()}
+            className="inline-flex items-center gap-2 rounded-md border border-purple-300 bg-white px-4 py-2 text-sm font-medium text-purple-600 hover:bg-purple-50 disabled:opacity-50 transition-colors"
+          >
+            {testing ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                發送中...
+              </>
+            ) : (
+              <>
+                <Send size={14} />
+                發送測試訊息
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // --- 設定頁主元件 ---
 
 export default function SettingsPage() {
@@ -588,6 +772,7 @@ export default function SettingsPage() {
       <KeyListSection keys={keys} loading={loading} onDeleted={fetchData} />
       <UsageSection usage={usage} />
       <GiteaSection />
+      <SlackSection />
     </div>
   );
 }

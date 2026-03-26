@@ -565,6 +565,14 @@ async function executeTests(
      WHERE id = ?`
   ).run(passedCount, failedCount, skippedCount, testRunId);
 
+  // 產出並儲存 Markdown 測試報告
+  try {
+    const report = reportService.generateReport(testRunId);
+    reportService.saveReport(testRunId, report);
+  } catch (err) {
+    console.error(`[testRunner] 產出報告失敗:`, err);
+  }
+
   state.status = 'done';
   broadcastStatus(state);
 }
