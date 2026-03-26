@@ -82,7 +82,7 @@ async function callGeminiVision(
         ],
         generationConfig: {
           temperature: 0.2,
-          maxOutputTokens: 16384,
+          maxOutputTokens: 32768,
         },
       };
 
@@ -147,7 +147,7 @@ class PageScannerService {
     specContent?: string
   ): Promise<ScanResult> {
     const elementsSummary = elements
-      .slice(0, 30) // 限制數量避免 prompt 過長
+      .slice(0, 80) // 掃描更多元素
       .map((el, i) => {
         const parts = [`${i + 1}. <${el.tag}>`];
         if (el.type) parts.push(`type="${el.type}"`);
@@ -180,17 +180,19 @@ ${specContent.slice(0, 5000)}
 `;
     }
 
-    prompt += `## 嚴格限制
-- components: 最多 3 個
-- testPlan: 最多 3 個
-- steps: 每個最多 3 步
-- 所有文字欄位限 15 字
+    prompt += `## 要求
+- 仔細分析截圖，找出所有可互動元件（下拉選單、checkbox、搜尋框、按鈕、連結、篩選器等）
+- components: 列出 8-15 個主要元件
+- testPlan: 產出 8-12 個測試案例，涵蓋不同功能區域
+- steps: 每個案例 3-5 個步驟
+- description 限 20 字，expectedResult 限 30 字
 - 只回傳純 JSON，不要 markdown fence
+- 特別注意：下拉選單篩選、搜尋功能、分頁、排序、連結導航
 
 回傳 JSON：
 {
   "components": [
-    { "name": "名稱", "type": "form|link|button|input", "selector": "CSS", "description": "簡述" }
+    { "name": "名稱", "type": "form|dropdown|checkbox|link|button|input|filter|navigation|pagination", "selector": "CSS", "description": "簡述" }
   ],
   "testPlan": [
     {

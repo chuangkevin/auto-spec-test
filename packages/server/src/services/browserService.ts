@@ -51,6 +51,29 @@ class BrowserService {
     return buffer.toString('base64');
   }
 
+  /** 全頁截圖（擷取完整頁面，品質較高） */
+  async fullPageScreenshot(sessionId: string): Promise<string> {
+    const { page } = this.getSession(sessionId);
+    const buffer = await page.screenshot({ type: 'jpeg', quality: 70, fullPage: true });
+    return buffer.toString('base64');
+  }
+
+  /** 滾動頁面並收集所有可互動元素（解決懶載入問題） */
+  async scrollAndCollectElements(sessionId: string): Promise<void> {
+    const { page } = this.getSession(sessionId);
+    await page.evaluate(`(async () => {
+      var totalHeight = document.body.scrollHeight;
+      var viewHeight = window.innerHeight;
+      for (var i = 0; i < totalHeight; i += viewHeight) {
+        window.scrollTo(0, i);
+        await new Promise(r => setTimeout(r, 300));
+      }
+      window.scrollTo(0, 0);
+    })()`);
+    // 等待回到頂部後的渲染
+    await new Promise(r => setTimeout(r, 500));
+  }
+
   /** 開始連續截圖串流 */
   startScreenshotStream(
     sessionId: string,
@@ -128,7 +151,7 @@ class BrowserService {
 
     // Use string evaluation to avoid esbuild __name injection in page context
     return await page.evaluate(`(() => {
-      var selectors = 'a, button, input, select, textarea, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [tabindex]';
+      var selectors = 'a, button, input, select, textarea, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="checkbox"], [role="radio"], [role="combobox"], [role="listbox"], [role="switch"], [tabindex], [onclick], label[for], .dropdown, .select, [class*="dropdown"], [class*="select"], [class*="checkbox"], [class*="filter"]';
       var elements = document.querySelectorAll(selectors);
       var results = [];
       var buildSelector = function(el) {

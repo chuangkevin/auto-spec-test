@@ -97,7 +97,9 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
       state.status = 'scanning';
       broadcastStatus(state);
 
-      const screenshot = await browserService.screenshot(sessionId);
+      // 先滾動頁面觸發懶載入，再回到頂部截圖
+      await browserService.scrollAndCollectElements(sessionId);
+      const screenshot = await browserService.fullPageScreenshot(sessionId);
       const elements = await browserService.getInteractiveElements(sessionId);
       const pageInfo = await browserService.getPageInfo(sessionId);
 
