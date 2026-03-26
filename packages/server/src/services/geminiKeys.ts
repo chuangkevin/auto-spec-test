@@ -67,13 +67,11 @@ export function invalidateKeyCache(): void {
   cachedKeys = [];
 }
 
-/** Get the next API key using round-robin rotation */
+/** Get a random API key (avoids front-loading hot keys) */
 export function getGeminiApiKey(): string | null {
   const keys = loadKeys();
   if (keys.length === 0) return null;
-  const key = keys[keyIndex % keys.length];
-  keyIndex = (keyIndex + 1) % keys.length;
-  return key;
+  return keys[Math.floor(Math.random() * keys.length)];
 }
 
 /** Mark a key as failed (429) — skip it for this rotation cycle */

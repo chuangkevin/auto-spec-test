@@ -655,8 +655,9 @@ async function executeTests(
   broadcastStatus(state);
 }
 
-/** 執行單一步驟 */
+/** 執行單一步驟（錯誤不拋出，交給 AI 判斷整體結果） */
 async function executeStep(sessionId: string, step: any): Promise<void> {
+  try {
   switch (step.action) {
     case 'click':
       if (step.target) {
@@ -680,11 +681,20 @@ async function executeStep(sessionId: string, step: any): Promise<void> {
         await new Promise((r) => setTimeout(r, 1000));
       }
       break;
-    case 'assert':
-      if (step.target) {
-        await browserService.waitForSelector(sessionId, step.target, 5000);
+    case 'assert': {
+      // 跳過非 CSS selector 的 assert（如 document.url, url, title 等）
+      const t = (step.target || '').trim();
+      const isSpecial = ['document.url', 'document.title', 'url', 'title', 'body'].includes(t.toLowerCase());
+      if (t && !isSpecial) {
+        try {
+          await browserService.waitForSelector(sessionId, t, 5000);
+        } catch {
+          // selector 找不到不視為致命錯誤，交給 AI 判斷
+        }
       }
+      // assert 的實際判斷由外層 AI executeTestCase 負責
       break;
+    }
     case 'navigate':
       if (step.value || step.target) {
         await browserService.navigateTo(sessionId, step.value || step.target);
@@ -703,6 +713,10 @@ async function executeStep(sessionId: string, step: any): Promise<void> {
     default:
       // 未知操作，略過
       break;
+  }
+  } catch (err: any) {
+    // 步驟執行失敗不拋出，記錄後交給 AI 判斷整體結果
+    console.warn(`[executeStep] ${step.action} on "${step.target}" failed: ${err.message}`);
   }
 
   // 每步驟後短暫等待，讓頁面穩定
