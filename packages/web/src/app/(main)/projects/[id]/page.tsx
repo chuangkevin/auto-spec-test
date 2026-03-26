@@ -745,6 +745,7 @@ interface TestRunResult {
   name: string;
   status: 'passed' | 'failed' | 'skipped';
   actualResult?: string;
+  error?: string;
   screenshot?: string;
   duration?: number;
 }
@@ -1014,12 +1015,20 @@ function TestReportTab({ projectId }: { projectId: number }) {
                 {isExpanded && (
                   <div className="border-t border-gray-100 px-6 py-3 space-y-2 text-xs text-gray-600">
                     {r.actualResult && (
-                      <p>
-                        <span className="font-medium text-gray-700">
-                          實際結果：
-                        </span>
-                        {r.actualResult}
-                      </p>
+                      <div>
+                        <span className="font-medium text-gray-700">實際結果：</span>
+                        <pre className="mt-1 whitespace-pre-wrap rounded bg-gray-50 p-2 text-xs text-gray-700">
+                          {r.actualResult}
+                        </pre>
+                      </div>
+                    )}
+                    {r.error && (
+                      <div>
+                        <span className="font-medium text-red-600">執行錯誤：</span>
+                        <pre className="mt-1 whitespace-pre-wrap rounded bg-red-50 p-2 text-xs text-red-700">
+                          {r.error}
+                        </pre>
+                      </div>
                     )}
                     {r.screenshot && (
                       <div>

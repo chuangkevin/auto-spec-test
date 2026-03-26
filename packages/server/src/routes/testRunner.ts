@@ -538,6 +538,8 @@ async function executeTests(
       });
     }
 
+    const stepErrors: string[] = [];
+
     try {
       // 每個測試案例開始前，先導航回原始 URL（確保乾淨狀態）
       try {
@@ -562,7 +564,10 @@ async function executeTests(
           });
         }
 
-        await executeStep(state.sessionId, step);
+        const stepError = await executeStep(state.sessionId, step);
+        if (stepError) {
+          stepErrors.push(`步驟${s + 1}(${step.action} ${step.target || ''}): ${stepError}`);
+        }
 
         // 每步完成後強制送截圖（讓使用者看到瀏覽器變化）
         try {
@@ -588,7 +593,15 @@ async function executeTests(
       const result = await pageScannerService.executeTestCase(tc, screenshot, pageInfo);
       result.screenshot = screenshot;
 
-      if (result.passed) {
+      // 如果有步驟錯誤，附加到 actualResult
+      const errorSummary = stepErrors.length > 0 ? `\n\n執行錯誤：\n${stepErrors.join('\n')}` : '';
+      const finalActualResult = (result.actualResult || '') + errorSummary;
+
+      // 如果所有步驟都出錯，直接判定失敗
+      const allStepsFailed = stepErrors.length === (tc.steps || []).length;
+      const finalPassed = allStepsFailed ? false : result.passed;
+
+      if (finalPassed) {
         passedCount++;
       } else {
         failedCount++;
@@ -602,12 +615,12 @@ async function executeTests(
         testRunId,
         tc.id,
         tc.name,
-        result.passed ? 'passed' : 'failed',
+        finalPassed ? 'passed' : 'failed',
         JSON.stringify(tc.steps),
         tc.expectedResult,
-        result.actualResult,
+        finalActualResult,
         result.screenshot || null,
-        result.error || null
+        stepErrors.length > 0 ? stepErrors.join('; ') : (result.error || null)
       );
 
       // 廣播結果
@@ -616,8 +629,8 @@ async function executeTests(
           type: 'result',
           data: {
             testCaseId: tc.id,
-            passed: result.passed,
-            actualResult: result.actualResult,
+            passed: finalPassed,
+            actualResult: finalActualResult,
             screenshot: result.screenshot,
           },
         });
@@ -655,8 +668,8 @@ async function executeTests(
   broadcastStatus(state);
 }
 
-/** 執行單一步驟（錯誤不拋出，交給 AI 判斷整體結果） */
-async function executeStep(sessionId: string, step: any): Promise<void> {
+/** 執行單一步驟（回傳錯誤訊息，null 表示成功） */
+async function executeStep(sessionId: string, step: any): Promise<string | null> {
   try {
   switch (step.action) {
     case 'click':
@@ -715,10 +728,13 @@ async function executeStep(sessionId: string, step: any): Promise<void> {
       break;
   }
   } catch (err: any) {
-    // 步驟執行失敗不拋出，記錄後交給 AI 判斷整體結果
     console.warn(`[executeStep] ${step.action} on "${step.target}" failed: ${err.message}`);
+    // 每步驟後短暫等待
+    await new Promise((r) => setTimeout(r, 300));
+    return err.message || '未知錯誤';
   }
 
   // 每步驟後短暫等待，讓頁面穩定
   await new Promise((r) => setTimeout(r, 300));
+  return null;
 }

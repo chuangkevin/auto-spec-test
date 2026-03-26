@@ -160,14 +160,18 @@ class PageScannerService {
       })
       .join('\n');
 
-    let prompt = `你是一個專業的前端測試工程師。請分析以下網頁截圖和可互動元件列表，產出完整的測試計畫。
+    let prompt = `你是一個專業的前端測試工程師。請分析以下網頁截圖和可互動元件列表，產出測試計畫。
 
 ## 頁面資訊
 - URL: ${pageInfo.url}
 - 標題: ${pageInfo.title}
 
-## 可互動元件列表
+## 可互動元件列表（已從 DOM 實際掃描）
 ${elementsSummary}
+
+## 最重要規則
+**你只能使用上方「可互動元件列表」中提供的 selector。絕對不要自己猜 selector 或編造不存在的 selector。**
+如果某個功能在元件列表中找不到對應的 selector，就不要為它建立測試案例。
 
 `;
 
