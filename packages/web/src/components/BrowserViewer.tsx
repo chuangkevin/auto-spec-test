@@ -79,8 +79,13 @@ export default function BrowserViewer({
         {/* Current step bar (bottom overlay) */}
         {currentStep && status !== 'idle' && (
           <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-4 py-2">
-            <p className="text-xs text-gray-300">目前步驟</p>
-            <p className="text-sm text-white">{currentStep}</p>
+            <div className="flex items-center gap-2">
+              <span className="text-sm">🧪</span>
+              <div>
+                <p className="text-[10px] text-gray-400">James 正在測試</p>
+                <p className="text-sm text-white">{currentStep}</p>
+              </div>
+            </div>
           </div>
         )}
       </div>

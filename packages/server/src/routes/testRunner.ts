@@ -223,7 +223,7 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
       const pageInfo = await browserService.getPageInfo(sessionId);
 
       const discussion = await testOrchestrator.discuss(
-        screenshot, elements, state.behaviors || [], pageInfo
+        screenshot, elements, state.behaviors || [], pageInfo, state.broadcast
       );
 
       state.discussion = discussion;

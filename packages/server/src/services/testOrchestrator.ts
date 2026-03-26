@@ -13,9 +13,19 @@
 import { getGeminiApiKey, getGeminiModel, trackUsage } from './geminiKeys.js';
 
 interface DiscussionMessage {
-  role: 'qa_lead' | 'frontend_expert' | 'ux_specialist' | 'security_tester';
+  role: string;
+  name: string;
+  avatar: string;
   message: string;
 }
+
+const AI_AGENTS = {
+  echo: { name: 'Echo', role: 'QA 策略師', avatar: '🎯' },
+  lisa: { name: 'Lisa', role: '前端技術專家', avatar: '💻' },
+  bob: { name: 'Bob', role: 'UX 體驗分析師', avatar: '🎨' },
+  james: { name: 'James', role: '測試執行者', avatar: '🧪' },
+  sophia: { name: 'Sophia', role: '安全審查員', avatar: '🔒' },
+};
 
 interface TestPlanReview {
   approved: boolean;
@@ -73,69 +83,73 @@ export class TestOrchestrator {
     screenshot: string,
     elements: any[],
     behaviors: any[],
-    pageInfo: { url: string; title: string }
+    pageInfo: { url: string; title: string },
+    broadcast?: (msg: any) => void
   ): Promise<DiscussionMessage[]> {
     const context = `頁面：${pageInfo.title} (${pageInfo.url})
 元件數：${elements.length}
 已探索行為：${behaviors.filter(b => b.type !== 'no_effect').map(b => `${b.type}: ${b.description}`).join(', ')}`;
 
     const messages: DiscussionMessage[] = [];
+    const send = (msg: DiscussionMessage) => {
+      messages.push(msg);
+      if (broadcast) broadcast({ type: 'discussion', data: msg });
+    };
 
-    // QA Lead
-    const qaPrompt = `你是 QA Lead。分析以下網頁，提出測試重點和策略（3-5 點，每點一句話）：
+    // Echo (QA 策略師) — 先發言
+    const echoPrompt = `你是 Echo，一位資深 QA 策略師。用口語化、有個性的方式分析這個網頁，說出你認為的測試重點。像是在跟同事開會討論一樣，不要太正式。2-4 句話。
+
 ${context}
 
-只回傳 JSON: { "message": "你的分析" }`;
+只回傳 JSON: { "message": "你的發言（口語化）" }`;
     try {
-      const qaRes = cleanJson(await callGemini(qaPrompt, [screenshot]));
-      messages.push({ role: 'qa_lead', message: qaRes.message });
-    } catch { messages.push({ role: 'qa_lead', message: '建議優先測試核心功能流程' }); }
+      const res = cleanJson(await callGemini(echoPrompt, [screenshot]));
+      send({ ...AI_AGENTS.echo, message: res.message });
+    } catch { send({ ...AI_AGENTS.echo, message: '這個頁面核心功能流程是重點，我們先把主要路徑跑通再說。' }); }
 
-    // Frontend Expert
-    const fePrompt = `你是前端技術專家。分析以下網頁的技術特徵和潛在問題（3-5 點）：
+    // Lisa (前端專家) — 回應 Echo，補充技術觀點
+    const lisaPrompt = `你是 Lisa，一位前端技術專家。你的同事 Echo 剛說了：「${messages[0]?.message || ''}」
+
+你要回應他，並從技術角度補充你的看法。像是在跟同事討論一樣，可以同意也可以提出不同意見。2-4 句話。
+
 ${context}
 
-QA Lead 的意見：${messages[0]?.message || ''}
-
-只回傳 JSON: { "message": "你的分析" }`;
+只回傳 JSON: { "message": "你的回應（口語化）" }`;
     try {
-      const feRes = cleanJson(await callGemini(fePrompt, [screenshot]));
-      messages.push({ role: 'frontend_expert', message: feRes.message });
-    } catch { messages.push({ role: 'frontend_expert', message: '注意動態載入和非同步操作' }); }
+      const res = cleanJson(await callGemini(lisaPrompt, [screenshot]));
+      send({ ...AI_AGENTS.lisa, message: res.message });
+    } catch { send({ ...AI_AGENTS.lisa, message: '同意 Echo 的看法，但我想補充一點 — 要特別注意動態載入的元件，selector 可能不穩定。' }); }
 
-    // UX Specialist
-    const uxPrompt = `你是 UX 測試專家。從使用者體驗角度分析以下網頁需要測試什麼（3-5 點）：
+    // Bob (UX 分析師) — 回應前兩人，從 UX 角度切入
+    const bobPrompt = `你是 Bob，一位 UX 體驗分析師。你的同事們討論了：
+- Echo: ${messages[0]?.message || ''}
+- Lisa: ${messages[1]?.message || ''}
+
+你要從使用者體驗的角度回應，可以贊同、反駁或提出新觀點。像是在跟同事討論一樣。2-4 句話。
+
 ${context}
 
-其他人的意見：
-- QA Lead: ${messages[0]?.message || ''}
-- 前端專家: ${messages[1]?.message || ''}
-
-只回傳 JSON: { "message": "你的分析" }`;
+只回傳 JSON: { "message": "你的回應（口語化）" }`;
     try {
-      const uxRes = cleanJson(await callGemini(uxPrompt, [screenshot]));
-      messages.push({ role: 'ux_specialist', message: uxRes.message });
-    } catch { messages.push({ role: 'ux_specialist', message: '關注使用者操作流程和錯誤處理' }); }
+      const res = cleanJson(await callGemini(bobPrompt, [screenshot]));
+      send({ ...AI_AGENTS.bob, message: res.message });
+    } catch { send({ ...AI_AGENTS.bob, message: '你們說的都對，但別忘了從使用者的角度看 — 操作流程順不順暢、錯誤提示清不清楚，這些才是最容易出包的地方。' }); }
 
     return messages;
   }
 
+  /** 取得測試執行者名稱 */
+  getExecutorName(): typeof AI_AGENTS.james {
+    return AI_AGENTS.james;
+  }
+
   /**
    * 階段 2: 總結討論，產出測試計畫
-   * （由 pageScannerService.scanPage 處理，這裡把討論結果加入 prompt）
    */
   formatDiscussionForPrompt(discussion: DiscussionMessage[]): string {
     if (discussion.length === 0) return '';
     return `## AI 團隊討論結果
-${discussion.map(d => {
-  const roleLabel: Record<string, string> = {
-    qa_lead: 'QA Lead',
-    frontend_expert: '前端專家',
-    ux_specialist: 'UX 專家',
-    security_tester: '安全測試',
-  };
-  return `### ${roleLabel[d.role] || d.role}\n${d.message}`;
-}).join('\n\n')}
+${discussion.map(d => `### ${d.name}（${d.role}）\n${d.message}`).join('\n\n')}
 
 請根據以上團隊討論結果，產出更全面的測試計畫。
 `;

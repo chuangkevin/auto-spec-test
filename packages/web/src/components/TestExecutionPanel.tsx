@@ -202,6 +202,11 @@ export default function TestExecutionPanel({
               setTestCases(d.testCases);
               break;
             }
+            case 'discussion': {
+              const d = msg.data as { name: string; role: string; avatar: string; message: string };
+              setDiscussion(prev => [...prev, d]);
+              break;
+            }
             case 'error': {
               const d = msg.data as { message: string };
               setError(d.message);
@@ -848,7 +853,7 @@ export default function TestExecutionPanel({
             </div>
           )}
 
-          {/* AI Discussion */}
+          {/* AI Discussion — chat style */}
           {discussion.length > 0 && (
             <div className="rounded-lg border border-indigo-200 bg-white overflow-hidden">
               <div className="flex items-center gap-2 bg-indigo-50 px-4 py-2">
@@ -857,23 +862,21 @@ export default function TestExecutionPanel({
                   AI 團隊討論
                 </h3>
               </div>
-              <div className="max-h-48 overflow-y-auto px-4 py-2 space-y-2">
-                {discussion.map((d, i) => {
-                  const roleLabel: Record<string, string> = {
-                    qa_lead: '🎯 QA Lead',
-                    frontend_expert: '💻 前端專家',
-                    ux_specialist: '🎨 UX 專家',
-                    security_tester: '🔒 安全測試',
-                  };
-                  return (
-                    <div key={i} className="rounded bg-gray-50 p-2 text-xs">
-                      <div className="font-medium text-gray-700 mb-1">
-                        {roleLabel[d.role] || d.role}
-                      </div>
-                      <div className="text-gray-600 whitespace-pre-line">{d.message}</div>
+              <div className="max-h-64 overflow-y-auto px-3 py-2 space-y-3">
+                {discussion.map((d: any, i: number) => (
+                  <div key={i} className="flex gap-2">
+                    <div className="shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 text-sm">
+                      {d.avatar || '🤖'}
                     </div>
-                  );
-                })}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-xs font-bold text-gray-800">{d.name || d.role}</span>
+                        <span className="text-[10px] text-gray-400">{d.role}</span>
+                      </div>
+                      <p className="mt-0.5 text-xs text-gray-600 leading-relaxed whitespace-pre-line">{d.message}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
