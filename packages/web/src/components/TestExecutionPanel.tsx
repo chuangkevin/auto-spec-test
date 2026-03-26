@@ -81,6 +81,9 @@ export default function TestExecutionPanel({
   const [creatingProject, setCreatingProject] = useState(false);
   const [createdProjectId, setCreatedProjectId] = useState<number | null>(null);
   const [testRunId, setTestRunId] = useState<number | null>(null);
+  const [existingProject, setExistingProject] = useState<{
+    id: number; name: string; testRunCount: number;
+  } | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -202,17 +205,37 @@ export default function TestExecutionPanel({
   const handleStartScan = async () => {
     if (!url.trim()) return;
     setError(null);
+    setExistingProject(null);
     setStatus('scanning');
     setComponents([]);
     setTestCases([]);
     setScreenshot(null);
     setCurrentStep('');
+    setCreatedProjectId(null);
+
+    // 檢查 URL 是否已有測試記錄
+    if (projectId === 0) {
+      try {
+        const check = await api.get<{
+          exists: boolean;
+          project?: { id: number; name: string };
+          testRunCount?: number;
+        }>(`/api/test-runs/check-url?url=${encodeURIComponent(url.trim())}`);
+        if (check.exists && check.project) {
+          setExistingProject({
+            id: check.project.id,
+            name: check.project.name,
+            testRunCount: check.testRunCount || 0,
+          });
+        }
+      } catch { /* ignore */ }
+    }
 
     try {
       // Start session
       const res = await api.post<{ sessionId: string }>(
         '/api/test-runner/start',
-        { url: url.trim(), projectId, specContent },
+        { url: url.trim(), projectId: existingProject?.id || projectId, specContent },
       );
       setSessionId(res.sessionId);
       connectWs(res.sessionId);
@@ -376,6 +399,33 @@ export default function TestExecutionPanel({
 
   return (
     <div className="space-y-4">
+      {/* Existing project banner */}
+      {existingProject && (
+        <div className="flex items-center gap-3 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm">
+          <FolderPlus size={18} className="shrink-0 text-blue-600" />
+          <div className="flex-1">
+            <p className="font-medium text-blue-800">
+              此網址已有專案：{existingProject.name}
+            </p>
+            <p className="text-blue-600 text-xs">
+              已進行 {existingProject.testRunCount} 次測試，本次結果將加入此專案
+            </p>
+          </div>
+          <a
+            href={`/projects/${existingProject.id}`}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+          >
+            前往專案
+          </a>
+          <a
+            href={`/projects/${existingProject.id}#reports`}
+            className="rounded-md border border-blue-300 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
+          >
+            歷次報告
+          </a>
+        </div>
+      )}
+
       {/* Error banner */}
       {error && (
         <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
@@ -588,8 +638,8 @@ export default function TestExecutionPanel({
               />
             </div>
 
-            {/* 一鍵建立專案 — 有測試案例就顯示 */}
-            {projectId === 0 && testCases.length > 0 && (
+            {/* 一鍵建立專案 — 有測試案例且沒有現有專案時顯示 */}
+            {projectId === 0 && testCases.length > 0 && !existingProject && (
               <div className="mt-3">
                 {createdProjectId ? (
                   <a

@@ -29,6 +29,52 @@ export const runnerStates = new Map<string, RunnerState>();
 export default async function testRunnerRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook('preHandler', authHook);
 
+  // GET /api/test-runs/check-url — 檢查 URL 是否已有測試記錄/專案
+  fastify.get<{
+    Querystring: { url: string };
+  }>('/api/test-runs/check-url', async (request, reply) => {
+    const db = getDb();
+    const { url } = request.query as any;
+    if (!url) return reply.status(400).send({ error: '請提供 URL' });
+
+    // 找所有符合的 test_runs（URL 完全匹配或前綴匹配）
+    const runs = db.prepare(
+      `SELECT tr.id, tr.project_id, tr.url, tr.status, tr.total_cases, tr.passed_cases,
+              tr.failed_cases, tr.created_at,
+              p.name as project_name
+       FROM test_runs tr
+       LEFT JOIN projects p ON tr.project_id = p.id
+       WHERE tr.url = ?
+       ORDER BY tr.created_at DESC
+       LIMIT 10`
+    ).all(url) as any[];
+
+    if (runs.length === 0) {
+      return { exists: false };
+    }
+
+    // 找出有綁定專案的
+    const withProject = runs.filter((r: any) => r.project_id);
+    const latestProject = withProject.length > 0 ? {
+      id: withProject[0].project_id,
+      name: withProject[0].project_name,
+    } : null;
+
+    return {
+      exists: true,
+      project: latestProject,
+      testRunCount: runs.length,
+      latestRun: {
+        id: runs[0].id,
+        status: runs[0].status,
+        totalCases: runs[0].total_cases,
+        passedCases: runs[0].passed_cases,
+        failedCases: runs[0].failed_cases,
+        createdAt: runs[0].created_at,
+      },
+    };
+  });
+
   // POST /api/test-runner/start — 開始測試 session
   fastify.post<{
     Body: { url: string; projectId?: number; specContent?: string };
