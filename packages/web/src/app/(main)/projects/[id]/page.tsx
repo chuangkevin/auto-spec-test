@@ -792,7 +792,7 @@ function TestReportTab({ projectId }: { projectId: number }) {
     if (!testRun) return;
     // 從後端下載伺服器端產出的完整 Markdown 報告
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
     try {
       const res = await fetch(`${BASE_URL}/api/test-runs/${testRun.id}/report`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -839,7 +839,7 @@ function TestReportTab({ projectId }: { projectId: number }) {
     setPushingGitea(true);
     setPushMsg('');
     try {
-      await api.post(`/api/projects/${projectId}/test-runs/${testRun.id}/push-gitea`);
+      await api.post(`/api/projects/${projectId}/test-runs/${testRun.id}/push-gitea`, {});
       setPushMsg('已成功推送到 Gitea');
       setTimeout(() => setPushMsg(''), 3000);
     } catch (err: unknown) {

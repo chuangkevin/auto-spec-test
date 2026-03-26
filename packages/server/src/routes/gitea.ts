@@ -418,4 +418,67 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
       return reply.status(502).send({ error: err.message });
     }
   });
+
+  /** POST /api/projects/:projectId/test-runs/:runId/push-gitea — 推送測試報告到 Gitea */
+  fastify.post<{
+    Params: { projectId: string; runId: string };
+  }>('/api/projects/:projectId/test-runs/:runId/push-gitea', async (request, reply) => {
+    const db = getDb();
+    const { projectId, runId } = request.params;
+
+    const project = db.prepare(
+      'SELECT id, name, gitea_org, gitea_repo FROM projects WHERE id = ?'
+    ).get(projectId) as any;
+    if (!project) return reply.status(404).send({ error: '專案不存在' });
+    if (!project.gitea_repo) return reply.status(400).send({ error: '專案未綁定 Gitea Repository' });
+
+    const run = db.prepare('SELECT * FROM test_runs WHERE id = ?').get(runId) as any;
+    if (!run) return reply.status(404).send({ error: '測試記錄不存在' });
+
+    const results = db.prepare(
+      'SELECT * FROM test_case_results WHERE test_run_id = ? AND status = ?'
+    ).all(runId, 'failed') as any[];
+
+    if (results.length === 0) {
+      return { message: '沒有失敗的測試案例需要推送', pushed: 0 };
+    }
+
+    try {
+      const gitea = createGiteaService();
+      const [owner, repo] = project.gitea_repo.split('/');
+      const labelId = await gitea.ensureBugLabel(owner, repo);
+      let pushed = 0;
+
+      for (const r of results) {
+        const body = [
+          `## Bug 描述`,
+          `測試案例 ${r.case_id}（${r.name}）執行失敗`,
+          '',
+          `## 預期結果`,
+          r.expected_result || '未定義',
+          '',
+          `## 實際結果`,
+          r.actual_result || '未知',
+          '',
+          `## 測試資訊`,
+          `- 測試日期：${run.created_at}`,
+          `- 目標網址：${run.url}`,
+          `- 專案：${project.name}`,
+          '',
+          '> 由 Auto Spec Test 自動產出',
+        ].join('\n');
+
+        await gitea.createIssue(owner, repo, {
+          title: `[Bug] ${r.case_id}: ${r.name}`,
+          body,
+          labels: labelId ? [labelId] : [],
+        });
+        pushed++;
+      }
+
+      return { message: `已推送 ${pushed} 個 Bug 到 Gitea`, pushed };
+    } catch (err: any) {
+      return reply.status(502).send({ error: `推送失敗：${err.message}` });
+    }
+  });
 }
