@@ -1,6 +1,6 @@
 # 功能模組：智慧探索式測試（Multi-Agent Architecture）
 
-<!-- status: pending -->
+<!-- status: done -->
 
 ## 設計概念
 

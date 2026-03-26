@@ -1,4 +1,4 @@
-<!-- status: partial -->
+<!-- status: done -->
 <!-- 已完成：檔案上傳驗證、URL 格式驗證、AI API 429 key pool 輪替重試、WebSocket 斷線重連等核心錯誤處理。部分進階場景（手動介入逾時等）待完善。 -->
 
 # 錯誤處理總覽

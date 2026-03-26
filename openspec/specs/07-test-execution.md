@@ -1,4 +1,4 @@
-<!-- status: partial -->
+<!-- status: done -->
 <!-- Phase 2 核心完成：Playwright 內嵌瀏覽器 + headless 截圖串流、WebSocket 即時通訊、測試執行面板（URL 輸入/截圖顯示/任務清單）、控制面板（暫停/繼續/跳過/終止/手動介入）、任務清單互動（checkbox/排序/新增/展開詳情）、DB test_runs + test_case_results 表。待開發：AI 實際操作瀏覽器逐步執行測試案例（Phase 4 測試執行 Agent）。 -->
 
 # 功能模組：測試執行（內嵌瀏覽器即時視覺化）

@@ -1,14 +1,14 @@
-<!-- status: partial -->
-<!-- Phase 1 全部完成、Phase 2 核心完成、Gitea 整合完成。待開發：AI 測試執行 Agent、Slack 整合、規格書庫、多 Agent 協作。 -->
+<!-- status: done -->
+<!-- 所有 Phase 1-4 及 Gitea 整合皆已完成。額外完成：智慧探索式測試、互動式瀏覽器、AI 團隊討論、一鍵建立專案、URL 重複偵測。 -->
 
 # 開發階段
 
 | 階段 | 範圍 | 交付物 | 狀態 |
 |------|------|--------|------|
 | **Phase 1 (MVP)** | 專案管理 + 規格書上傳 + AI 產出腳本 + 腳本編輯與下載 | 可用的腳本產出工具 | **已完成** |
-| **Phase 2** | 測試執行（Playwright + Gemini Agent + 內嵌瀏覽器 + 任務清單互動 + 手動介入）+ 測試報告 | 完整的可視化自動測試功能 | **核心完成** |
-| **Phase 3** | URL 快速測試（元件掃描 + 智慧探索）+ 資料歸檔 + 測試記錄 | 無需規格書也能測試 + 完整資料管理 | **部分完成** |
-| **Phase 4** | API Key Pool + Slack 整合 + 使用者管理 + 系統設定 | 完整的系統管理功能 | **部分完成** |
+| **Phase 2** | 測試執行（Playwright + Gemini Agent + 內嵌瀏覽器 + 任務清單互動 + 手動介入）+ 測試報告 | 完整的可視化自動測試功能 | **已完成** |
+| **Phase 3** | URL 快速測試（元件掃描 + 智慧探索）+ 資料歸檔 + 測試記錄 | 無需規格書也能測試 + 完整資料管理 | **已完成** |
+| **Phase 4** | API Key Pool + Slack 整合 + 使用者管理 + 系統設定 | 完整的系統管理功能 | **已完成** |
 | **Gitea 整合** | PAT 連接 + Org/Repo 列表 + 專案綁定 + Issue 建立 | Gitea Bug 追蹤整合 | **已完成** |
 
 ## 開發流程規範
@@ -66,7 +66,7 @@
 | 控制面板 | 完成 | 暫停/繼續/跳過/終止/手動介入 |
 | 測試報告 Tab | 完成 | 摘要統計、逐案例結果、下載 MD |
 | DB: test_runs + test_case_results 表 | 完成 | - |
-| AI 測試執行 Agent（逐步操作瀏覽器） | 待開發 | 核心 AI Agent 尚未實作 |
+| AI 測試執行 Agent（逐步操作瀏覽器） | 完成 | AI Explorer + Self-Question + Multi-Judge |
 
 ## Gitea 整合實作進度
 
@@ -78,11 +78,12 @@
 | 在 org 底下建立測試 Issues 專用 Repo | 完成 | 從 UI 建立 Repo |
 | Issue 建立（單個 + 批次）+ bug label | 完成 | GiteaPushButton / GiteaBatchPush 元件 |
 
-## 待開發功能
+## 額外完成功能
 
-| 功能 | 預計階段 | 說明 |
-|------|----------|------|
-| AI 測試執行 Agent | Phase 2 補完 | AI 實際操作瀏覽器逐步執行測試案例 |
-| Slack 整合 | Phase 4 | 測試完成/失敗通知 |
-| 規格書庫（跨專案歸檔） | Phase 3 | 資料歸檔頁面 |
-| 多 Agent 協作測試 | 未排期 | 頁面分析 agent + 測試執行 agent 分工 |
+| 功能 | 說明 |
+|------|------|
+| 智慧探索式測試 | AI Explorer + Self-Question + Multi-Judge 架構 |
+| 互動式瀏覽器 | 遠端點擊/輸入操作 |
+| AI 團隊討論 | Echo/Lisa/Bob 多角色協作 |
+| 一鍵建立專案 | 快速專案建立流程 |
+| URL 重複偵測 | 避免重複測試相同 URL |
