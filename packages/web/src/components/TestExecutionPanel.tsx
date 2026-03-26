@@ -585,6 +585,47 @@ export default function TestExecutionPanel({
         )}
       </div>
 
+      {/* Preview: 手動操作 or 直接掃描 — URL 下方、截圖上方 */}
+      {status === 'preview' && (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={handleNeedManual}
+            className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg border-2 border-orange-400 bg-orange-50 px-4 py-3 text-base font-bold text-orange-700 hover:bg-orange-100"
+          >
+            <Hand size={20} />
+            我要先手動操作（登入/選帳號）
+          </button>
+          <button
+            type="button"
+            onClick={handleDirectScan}
+            className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-3 text-base font-bold text-white hover:bg-green-700"
+          >
+            <Search size={20} />
+            直接開始 AI 掃描
+          </button>
+        </div>
+      )}
+
+      {/* 手動操作中 */}
+      {status === 'manual' && (
+        <div className="flex items-center gap-3 rounded-lg border-2 border-orange-400 bg-orange-50 px-4 py-3">
+          <Hand size={20} className="text-orange-600 animate-pulse" />
+          <div className="flex-1">
+            <p className="text-sm font-bold text-orange-800">手動操作中 — 點擊下方截圖操作瀏覽器</p>
+            <p className="text-xs text-orange-600">截圖每秒更新</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleManualDone}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-green-700"
+          >
+            <CheckCircle2 size={16} />
+            操作完成，開始掃描
+          </button>
+        </div>
+      )}
+
       {/* Main layout: left browser + right panel */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         {/* Left: Browser viewer (3/5) */}
@@ -598,47 +639,6 @@ export default function TestExecutionPanel({
             interactive={status === 'manual' || status === 'preview'}
             onScreenshotUpdate={setScreenshot}
           />
-
-          {/* Preview: 手動操作 or 直接掃描 — 截圖正下方 */}
-          {status === 'preview' && (
-            <div className="flex gap-2 mt-2">
-              <button
-                type="button"
-                onClick={handleNeedManual}
-                className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg border-2 border-orange-400 bg-orange-50 px-4 py-3 text-sm font-bold text-orange-700 hover:bg-orange-100"
-              >
-                <Hand size={18} />
-                我要先手動操作（登入/選帳號）
-              </button>
-              <button
-                type="button"
-                onClick={handleDirectScan}
-                className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-3 text-sm font-bold text-white hover:bg-green-700"
-              >
-                <Search size={18} />
-                直接開始 AI 掃描
-              </button>
-            </div>
-          )}
-
-          {/* 手動操作中 — 截圖正下方 */}
-          {status === 'manual' && (
-            <div className="flex items-center gap-3 mt-2 rounded-lg border-2 border-orange-400 bg-orange-50 px-4 py-3">
-              <Hand size={20} className="text-orange-600 animate-pulse" />
-              <div className="flex-1">
-                <p className="text-sm font-bold text-orange-800">手動操作中 — 點擊截圖操作瀏覽器</p>
-                <p className="text-xs text-orange-600">截圖每秒更新，你可以點擊、輸入</p>
-              </div>
-              <button
-                type="button"
-                onClick={handleManualDone}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-green-700"
-              >
-                <CheckCircle2 size={16} />
-                操作完成，開始掃描
-              </button>
-            </div>
-          )}
 
           {/* Control buttons */}
           {!['idle', 'preview', 'manual'].includes(status) && (
