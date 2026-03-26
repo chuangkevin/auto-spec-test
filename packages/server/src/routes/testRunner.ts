@@ -3,8 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { getDb } from '../db/connection.js';
 import { authHook } from '../middleware/auth.js';
 import { browserService } from '../services/browserService.js';
+import { explorerService } from '../services/explorerService.js';
 import { pageScannerService } from '../services/pageScannerService.js';
 import { reportService } from '../services/reportService.js';
+import { selfQuestionService } from '../services/selfQuestionService.js';
 
 /** 每個 session 的執行狀態 */
 interface RunnerState {
@@ -14,6 +16,11 @@ interface RunnerState {
   specContent?: string;
   status: 'scanning' | 'ready' | 'running' | 'paused' | 'manual' | 'done';
   scanResult?: any;
+  behaviors?: Array<{
+    selector: string;
+    type: string;
+    description: string;
+  }>;
   testRunId?: number;
   currentCaseIndex: number;
   paused: boolean;
@@ -129,6 +136,77 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
     }
   });
 
+  // POST /api/test-runner/:sessionId/detect-login — 偵測是否為登入頁面
+  fastify.post<{
+    Params: { sessionId: string };
+  }>('/api/test-runner/:sessionId/detect-login', async (request, reply) => {
+    const { sessionId } = request.params;
+    const state = runnerStates.get(sessionId);
+    if (!state) {
+      return reply.status(404).send({ error: 'Session 不存在' });
+    }
+
+    try {
+      const elements = await browserService.getInteractiveElements(sessionId);
+
+      // 檢查是否有 password 欄位
+      const hasPasswordField = elements.some(
+        el => el.tag === 'input' && el.type === 'password'
+      );
+
+      // 檢查是否有登入相關按鈕/連結
+      const loginKeywords = ['登入', '登录', 'login', 'signin', 'sign in', 'log in'];
+      const hasLoginButton = elements.some(el => {
+        const text = (el.text || '').toLowerCase();
+        const name = (el.name || '').toLowerCase();
+        const placeholder = (el.placeholder || '').toLowerCase();
+        return loginKeywords.some(kw =>
+          text.includes(kw) || name.includes(kw) || placeholder.includes(kw)
+        );
+      });
+
+      // 檢查頁面元素是否較少（登入頁通常元素少）
+      const fewElements = elements.length < 20;
+
+      const isLoginPage = hasPasswordField && (hasLoginButton || fewElements);
+
+      let reason = '';
+      if (isLoginPage) {
+        const reasons: string[] = [];
+        if (hasPasswordField) reasons.push('偵測到密碼輸入欄位');
+        if (hasLoginButton) reasons.push('偵測到登入按鈕');
+        if (fewElements) reasons.push(`頁面元素較少（${elements.length} 個）`);
+        reason = reasons.join('；');
+      } else {
+        reason = '未偵測到登入頁面特徵';
+      }
+
+      return { isLoginPage, reason };
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message });
+    }
+  });
+
+  // POST /api/test-runner/:sessionId/explore — AI 探索頁面元素行為
+  fastify.post<{
+    Params: { sessionId: string };
+  }>('/api/test-runner/:sessionId/explore', async (request, reply) => {
+    const { sessionId } = request.params;
+    const state = runnerStates.get(sessionId);
+    if (!state) {
+      return reply.status(404).send({ error: 'Session 不存在' });
+    }
+
+    try {
+      const result = await explorerService.explorePage(sessionId);
+      // 儲存探索結果到 state，供 scan 使用
+      state.behaviors = result.behaviors;
+      return { behaviors: result.behaviors };
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message });
+    }
+  });
+
   // POST /api/test-runner/:sessionId/scan — AI 掃描頁面
   fastify.post<{
     Params: { sessionId: string };
@@ -153,7 +231,8 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
         screenshot,
         elements,
         pageInfo,
-        state.specContent
+        state.specContent,
+        state.behaviors
       );
 
       state.scanResult = scanResult;
@@ -557,6 +636,13 @@ async function executeTests(
 
         const step = tc.steps[s];
 
+        // 保存步驟前截圖（供 AI 自問比較用），僅對會改變頁面的操作
+        const needsSelfCheck = ['click', 'fill', 'select', 'hover', 'press', 'navigate'].includes(step.action);
+        let beforeStepScreenshot: string | null = null;
+        if (needsSelfCheck) {
+          try { beforeStepScreenshot = await browserService.screenshot(state.sessionId); } catch { /* ignore */ }
+        }
+
         if (state.broadcast) {
           state.broadcast({
             type: 'step',
@@ -567,6 +653,20 @@ async function executeTests(
         const stepError = await executeStep(state.sessionId, step);
         if (stepError) {
           stepErrors.push(`步驟${s + 1}(${step.action} ${step.target || ''}): ${stepError}`);
+        }
+
+        // AI 自問：這步操作的結果正常嗎？
+        if (needsSelfCheck && beforeStepScreenshot) {
+          try {
+            const afterStepScreenshot = await browserService.screenshot(state.sessionId);
+            const selfCheck = await selfQuestionService.analyzeStep(step, beforeStepScreenshot, afterStepScreenshot);
+            if (selfCheck.needRevert) {
+              try { await executeStep(state.sessionId, step); } catch { /* ignore revert error */ }
+            }
+            if (!selfCheck.passed && !selfCheck.expected) {
+              stepErrors.push(`AI自問(${step.description}): ${selfCheck.change}`);
+            }
+          } catch { /* ignore self-check error */ }
         }
 
         // 每步完成後強制送截圖（讓使用者看到瀏覽器變化）

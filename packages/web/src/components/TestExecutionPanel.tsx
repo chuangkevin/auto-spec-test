@@ -14,6 +14,14 @@ import {
   XCircle,
   AlertTriangle,
   FolderPlus,
+  LogIn,
+  MousePointerClick,
+  ArrowRightLeft,
+  Maximize2,
+  ChevronDown,
+  ToggleLeft,
+  MinusCircle,
+  Eye,
 } from 'lucide-react';
 import { api, BASE_URL } from '@/lib/api';
 import BrowserViewer from './BrowserViewer';
@@ -34,9 +42,17 @@ interface PageInfo {
   title: string;
 }
 
+interface Behavior {
+  selector: string;
+  type: 'toggle' | 'navigation' | 'modal' | 'dropdown' | 'form_submit' | 'no_effect';
+  description: string;
+}
+
 type SessionStatus =
   | 'idle'
   | 'scanning'
+  | 'exploring'
+  | 'login_required'
   | 'ready'
   | 'running'
   | 'paused'
@@ -81,6 +97,8 @@ export default function TestExecutionPanel({
   const [creatingProject, setCreatingProject] = useState(false);
   const [createdProjectId, setCreatedProjectId] = useState<number | null>(null);
   const [testRunId, setTestRunId] = useState<number | null>(null);
+  const [behaviors, setBehaviors] = useState<Behavior[]>([]);
+  const [loginReason, setLoginReason] = useState<string>('');
   const [existingProject, setExistingProject] = useState<{
     id: number; name: string; testRunCount: number;
   } | null>(null);

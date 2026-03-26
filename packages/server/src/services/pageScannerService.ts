@@ -53,7 +53,8 @@ async function callGeminiVision(
   prompt: string,
   imageBase64: string,
   callType: string,
-  projectId?: string
+  projectId?: string,
+  temperature?: number
 ): Promise<string> {
   let apiKey = getGeminiApiKey();
   if (!apiKey) {
@@ -81,7 +82,7 @@ async function callGeminiVision(
           },
         ],
         generationConfig: {
-          temperature: 0.2,
+          temperature: temperature ?? 0.2,
           maxOutputTokens: 32768,
         },
       };
@@ -144,7 +145,8 @@ class PageScannerService {
     screenshotBase64: string,
     elements: Array<any>,
     pageInfo: { url: string; title: string },
-    specContent?: string
+    specContent?: string,
+    behaviors?: Array<{ selector: string; type: string; description: string }>
   ): Promise<ScanResult> {
     const elementsSummary = elements
       .slice(0, 80) // 掃描更多元素
@@ -182,6 +184,26 @@ ${specContent.slice(0, 5000)}
 請根據規格書內容，產出更精準的測試案例，確保涵蓋規格書中描述的功能。
 
 `;
+    }
+
+    if (behaviors && behaviors.length > 0) {
+      const behaviorsSummary = behaviors
+        .filter(b => b.type !== 'no_effect')
+        .map(b => `- ${b.selector} → ${b.type}: ${b.description}`)
+        .join('\n');
+      if (behaviorsSummary) {
+        prompt += `## AI 探索行為結果（已實際點擊驗證）
+以下是 AI 自動探索各元素後觀察到的實際行為，請據此規劃更精準的測試案例：
+${behaviorsSummary}
+
+注意：
+- toggle 類型的元素需要測試「點擊一次」和「再次點擊恢復」兩種狀態
+- navigation 類型的元素需要驗證導航目標是否正確
+- modal 類型的元素需要測試開啟和關閉
+- dropdown 類型的元素需要測試展開、選擇和收合
+
+`;
+      }
     }
 
     prompt += `## 要求
