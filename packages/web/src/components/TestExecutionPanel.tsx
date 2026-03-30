@@ -378,7 +378,19 @@ export default function TestExecutionPanel({
     }>(`/api/test-runner/${sid}/scan`, { url: url.trim() });
 
     setComponents(scanRes.components);
-    setTestCases(scanRes.testPlan.map((tc) => ({ ...tc, selected: true })));
+    // 排序：破壞性操作（登出、刪除）放最後，預設不勾選
+    const destructiveKeywords = ['登出', 'logout', 'sign out', '刪除', 'delete', '移除'];
+    const sorted = [...scanRes.testPlan].sort((a, b) => {
+      const aDestructive = destructiveKeywords.some(k => a.name.toLowerCase().includes(k));
+      const bDestructive = destructiveKeywords.some(k => b.name.toLowerCase().includes(k));
+      if (aDestructive && !bDestructive) return 1;
+      if (!aDestructive && bDestructive) return -1;
+      return 0;
+    });
+    setTestCases(sorted.map((tc) => ({
+      ...tc,
+      selected: !destructiveKeywords.some(k => tc.name.toLowerCase().includes(k)),
+    })));
     setCurrentStep('');
     setStatus('ready');
   };
