@@ -766,11 +766,18 @@ async function executeTests(
     const stepErrors: string[] = [];
 
     try {
-      // 每個測試案例開始前，先導航回原始 URL（確保乾淨狀態）
+      // 每個測試案例開始前，只在 URL 偏離時才導航回去
+      // （避免需要登入的網站被登出）
       try {
-        await browserService.navigateTo(state.sessionId, state.url);
-        await new Promise((r) => setTimeout(r, 1000)); // 等待頁面載入
-      } catch { /* ignore navigation error */ }
+        const currentInfo = await browserService.getPageInfo(state.sessionId);
+        const currentOrigin = new URL(currentInfo.url).origin;
+        const targetOrigin = new URL(state.url).origin;
+        // 只有離開了目標網站才導航回去
+        if (currentOrigin !== targetOrigin) {
+          await browserService.navigateTo(state.sessionId, state.url);
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      } catch { /* ignore */ }
 
       // 逐步執行
       for (let s = 0; s < (tc.steps || []).length; s++) {
