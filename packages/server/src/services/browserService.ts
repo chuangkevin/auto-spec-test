@@ -66,6 +66,48 @@ class BrowserService {
     return session;
   }
 
+  /** 保存目前的 cookies + localStorage（登入後呼叫） */
+  async saveSessionState(sessionId: string): Promise<{ cookies: any[]; localStorage: Record<string, string> }> {
+    const { context, page } = this.getSession(sessionId);
+    const cookies = await context.cookies();
+    const localStorage = await page.evaluate(`(() => {
+      var data = {};
+      for (var i = 0; i < window.localStorage.length; i++) {
+        var key = window.localStorage.key(i);
+        data[key] = window.localStorage.getItem(key);
+      }
+      return data;
+    })()`) as Record<string, string>;
+    return { cookies, localStorage };
+  }
+
+  /** 還原 cookies + localStorage */
+  async restoreSessionState(sessionId: string, state: { cookies: any[]; localStorage: Record<string, string> }): Promise<void> {
+    const { context, page } = this.getSession(sessionId);
+    if (state.cookies.length > 0) {
+      await context.addCookies(state.cookies);
+    }
+    if (Object.keys(state.localStorage).length > 0) {
+      const lsJson = JSON.stringify(state.localStorage);
+      await page.evaluate(`((data) => {
+        for (var k in data) {
+          window.localStorage.setItem(k, data[k]);
+        }
+      })(${lsJson})`);
+    }
+  }
+
+  /** 檢查是否在登入頁面（有 password input 或 URL 含 login） */
+  async isLoginPage(sessionId: string): Promise<boolean> {
+    const { page } = this.getSession(sessionId);
+    const url = page.url().toLowerCase();
+    if (url.includes('login') || url.includes('signin') || url.includes('auth')) return true;
+    const hasPassword = await page.evaluate(`(() => {
+      return document.querySelectorAll('input[type="password"]').length > 0;
+    })()`) as boolean;
+    return hasPassword;
+  }
+
   /** 導航到 URL */
   async navigateTo(sessionId: string, url: string): Promise<void> {
     const { page } = this.getSession(sessionId);

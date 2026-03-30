@@ -28,6 +28,8 @@ interface RunnerState {
   paused: boolean;
   skipped: boolean;
   stopped: boolean;
+  /** 登入後保存的 session state（cookies + localStorage） */
+  savedSessionState?: { cookies: any[]; localStorage: Record<string, string> };
   /** WebSocket 訊息發送函式 */
   broadcast?: (msg: any) => void;
 }
@@ -298,6 +300,12 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
       );
 
       state.scanResult = scanResult;
+
+      // 掃描完成時保存登入狀態（cookies + localStorage）
+      try {
+        state.savedSessionState = await browserService.saveSessionState(sessionId);
+      } catch { /* ignore */ }
+
       state.status = 'ready';
       broadcastStatus(state);
 
@@ -766,14 +774,22 @@ async function executeTests(
     const stepErrors: string[] = [];
 
     try {
-      // 每個測試案例開始前，只在 URL 偏離時才導航回去
-      // （避免需要登入的網站被登出）
+      // 每個測試案例開始前，確保在正確的頁面且已登入
       try {
         const currentInfo = await browserService.getPageInfo(state.sessionId);
         const currentOrigin = new URL(currentInfo.url).origin;
         const targetOrigin = new URL(state.url).origin;
-        // 只有離開了目標網站才導航回去
+
+        // 如果離開了目標網站，導航回去
         if (currentOrigin !== targetOrigin) {
+          await browserService.navigateTo(state.sessionId, state.url);
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+
+        // 如果在登入頁面，還原 session state（cookies + localStorage）
+        const isLogin = await browserService.isLoginPage(state.sessionId);
+        if (isLogin && state.savedSessionState) {
+          await browserService.restoreSessionState(state.sessionId, state.savedSessionState);
           await browserService.navigateTo(state.sessionId, state.url);
           await new Promise((r) => setTimeout(r, 1000));
         }
