@@ -9,7 +9,7 @@ interface BehaviorResult {
 
 export class ExplorerService {
   /** 探索頁面中各元素的行為 */
-  async explorePage(sessionId: string): Promise<{
+  async explorePage(sessionId: string, broadcast?: (msg: any) => void): Promise<{
     behaviors: BehaviorResult[];
   }> {
     const elements = await browserService.getInteractiveElements(sessionId);
@@ -20,40 +20,92 @@ export class ExplorerService {
       .filter(el => ['button', 'a', 'select'].includes(el.tag) || el.role === 'button')
       .slice(0, 15);
 
-    for (const el of toExplore) {
-      const beforeScreenshot = await browserService.screenshot(sessionId);
-      const beforeUrl = (await browserService.getPageInfo(sessionId)).url;
+    // 廣播探索開始
+    if (broadcast) {
+      broadcast({ type: 'explore-start', data: { total: toExplore.length } });
+    }
+
+    for (let idx = 0; idx < toExplore.length; idx++) {
+      const el = toExplore[idx];
+      const elText = String(el.text || '').slice(0, 30);
+
+      // 廣播正在探索哪個元素
+      try {
+        if (broadcast) {
+          broadcast({
+            type: 'explore-step',
+            data: {
+              index: idx,
+              total: toExplore.length,
+              element: { tag: el.tag, text: elText, selector: el.selector },
+              status: 'exploring',
+            },
+          });
+        }
+      } catch { /* WS 可能已斷 */ }
 
       try {
-        await browserService.click(sessionId, el.selector);
-        await new Promise(r => setTimeout(r, 800)); // 等待動畫/載入
-      } catch {
-        behaviors.push({ selector: el.selector, type: 'no_effect', description: '點擊無反應' });
-        continue;
-      }
+        const beforeScreenshot = await browserService.screenshot(sessionId);
+        const beforeUrl = (await browserService.getPageInfo(sessionId)).url;
 
-      const afterScreenshot = await browserService.screenshot(sessionId);
-      const afterUrl = (await browserService.getPageInfo(sessionId)).url;
-
-      // 用 AI 比較前後差異
-      const analysis = await this.analyzeChange(beforeScreenshot, afterScreenshot, beforeUrl, afterUrl, el);
-      behaviors.push({ selector: el.selector, ...analysis } as BehaviorResult);
-
-      // 如果是 navigation，回到原始頁面
-      if (afterUrl !== beforeUrl) {
-        try {
-          await browserService.navigateTo(sessionId, beforeUrl);
-          await new Promise(r => setTimeout(r, 500));
-        } catch { /* ignore */ }
-      }
-      // 如果是 toggle/modal，嘗試恢復
-      if (analysis.type === 'toggle' || analysis.type === 'modal') {
         try {
           await browserService.click(sessionId, el.selector);
-          await new Promise(r => setTimeout(r, 300));
-        } catch { /* ignore */ }
+          await new Promise(r => setTimeout(r, 800));
+        } catch {
+          behaviors.push({ selector: el.selector, type: 'no_effect', description: '點擊無反應' });
+          continue;
+        }
+
+        const afterScreenshot = await browserService.screenshot(sessionId);
+        const afterUrl = (await browserService.getPageInfo(sessionId)).url;
+
+        // 用 AI 比較前後差異
+        const analysis = await this.analyzeChange(beforeScreenshot, afterScreenshot, beforeUrl, afterUrl, el);
+        const behavior = { selector: el.selector, ...analysis } as BehaviorResult;
+        behaviors.push(behavior);
+
+        // 廣播單個元素的探索結果
+        try {
+          if (broadcast) {
+            broadcast({
+              type: 'explore-step',
+              data: {
+                index: idx,
+                total: toExplore.length,
+                element: { tag: el.tag, text: elText, selector: el.selector },
+                status: 'done',
+                behavior,
+              },
+            });
+          }
+        } catch { /* WS 可能已斷 */ }
+
+        // 如果是 navigation，回到原始頁面
+        if (afterUrl !== beforeUrl) {
+          try {
+            await browserService.navigateTo(sessionId, beforeUrl);
+            await new Promise(r => setTimeout(r, 500));
+          } catch { /* ignore */ }
+        }
+        // 如果是 toggle/modal，嘗試恢復
+        if (analysis.type === 'toggle' || analysis.type === 'modal') {
+          try {
+            await browserService.click(sessionId, el.selector);
+            await new Promise(r => setTimeout(r, 300));
+          } catch { /* ignore */ }
+        }
+      } catch (err) {
+        console.warn(`[explorer] 探索元素 ${idx}/${toExplore.length} 失敗:`, err);
+        behaviors.push({ selector: el.selector, type: 'no_effect', description: '探索失敗' });
       }
     }
+
+    // 探索完成後重整頁面，清除所有殘留的彈窗、modal、dropdown 等
+    try {
+      const pageInfo = await browserService.getPageInfo(sessionId);
+      await browserService.navigateTo(sessionId, pageInfo.url);
+      await new Promise(r => setTimeout(r, 1000));
+    } catch { /* ignore */ }
 
     return { behaviors };
   }

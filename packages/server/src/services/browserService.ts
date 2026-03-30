@@ -108,6 +108,64 @@ class BrowserService {
     return hasPassword;
   }
 
+  /** 偵測登入頁面並回傳可點擊的帳號/身份元素 */
+  async detectLoginPage(sessionId: string): Promise<{
+    isLoginPage: boolean;
+    hasPasswordForm: boolean;
+    hasAccountSelector: boolean;
+    clickableAccounts: Array<{ text: string; selector: string }>;
+  }> {
+    const { page } = this.getSession(sessionId);
+    const url = page.url().toLowerCase();
+    const urlHasLogin = url.includes('login') || url.includes('signin') || url.includes('auth');
+
+    const domInfo = await page.evaluate(`(() => {
+      const hasPassword = document.querySelectorAll('input[type="password"]').length > 0;
+
+      // 尋找可能是帳號選擇的按鈕（文字含使用者名稱、角色名稱等）
+      const clickableAccounts = [];
+      const buttons = document.querySelectorAll('button, [role="button"], a');
+      for (const btn of buttons) {
+        const text = (btn.textContent || '').trim();
+        // 跳過空白、太長（不太可能是帳號按鈕）、或功能性按鈕
+        if (!text || text.length > 30 || text.length < 1) continue;
+        const lower = text.toLowerCase();
+        // 排除常見的非帳號按鈕
+        if (['登入', '登录', 'login', 'sign in', 'submit', '送出', '新增', '註冊', 'register', 'sign up'].includes(lower)) continue;
+
+        // 有 data-testid、id、或明確的 role 的按鈕更可能是帳號選擇
+        const el = btn;
+        let selector = '';
+        if (el.id) {
+          selector = '#' + el.id;
+        } else if (el.getAttribute('data-testid')) {
+          selector = '[data-testid="' + el.getAttribute('data-testid') + '"]';
+        } else {
+          // 用 text content 作為 selector
+          selector = 'text=' + text;
+        }
+
+        clickableAccounts.push({ text, selector });
+      }
+
+      return {
+        hasPassword,
+        clickableAccountsCount: clickableAccounts.length,
+        clickableAccounts: clickableAccounts.slice(0, 10),
+      };
+    })()`) as any;
+
+    const isLogin = urlHasLogin || domInfo.hasPassword;
+    const hasAccountSelector = !domInfo.hasPassword && domInfo.clickableAccountsCount > 0 && domInfo.clickableAccountsCount <= 10;
+
+    return {
+      isLoginPage: isLogin || hasAccountSelector,
+      hasPasswordForm: domInfo.hasPassword,
+      hasAccountSelector,
+      clickableAccounts: domInfo.clickableAccounts || [],
+    };
+  }
+
   /** 導航到 URL */
   async navigateTo(sessionId: string, url: string): Promise<void> {
     const { page } = this.getSession(sessionId);

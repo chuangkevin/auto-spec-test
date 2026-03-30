@@ -36,10 +36,25 @@ export default async function wsRoutes(fastify: FastifyInstance): Promise<void> 
     // 發送目前狀態
     sendMsg({ type: 'status', data: { state: state.status } });
 
-    // 開始截圖串流
+    // 開始截圖串流 — 手動模式用較慢的間隔
+    const interval = state.status === 'manual' ? 1500 : 500;
+    let pageInfoCounter = 0;
+
     browserService.startScreenshotStream(sessionId, (base64) => {
-      sendMsg({ type: 'screenshot', data: base64 });
-    });
+      pageInfoCounter++;
+      // 每 3 次截圖附帶 pageInfo（減少開銷但保持 URL 更新）
+      if (pageInfoCounter % 3 === 0) {
+        browserService.getPageInfo(sessionId)
+          .then(pageInfo => {
+            sendMsg({ type: 'screenshot', data: { screenshot: base64, pageInfo } });
+          })
+          .catch(() => {
+            sendMsg({ type: 'screenshot', data: base64 });
+          });
+      } else {
+        sendMsg({ type: 'screenshot', data: base64 });
+      }
+    }, interval);
 
     // 處理客戶端訊息
     socket.on('message', (raw: any) => {

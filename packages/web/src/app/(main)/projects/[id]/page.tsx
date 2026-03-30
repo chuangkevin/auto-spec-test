@@ -599,6 +599,7 @@ export default function ProjectDetailPage() {
           <TestExecutionPanel
             projectId={projectId}
             specContent={spec?.parsed_outline_md ?? undefined}
+            initialUrl={project?.test_url ?? undefined}
           />
         )}
 

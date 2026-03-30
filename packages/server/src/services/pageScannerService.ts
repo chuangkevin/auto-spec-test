@@ -204,11 +204,19 @@ class PageScannerService {
 
     const domTreeFormatted = domTree ? formatDomTree(domTree) : '';
 
-    let prompt = `你是一個專業的前端測試工程師。請分析以下網頁截圖和可互動元件列表，產出測試計畫。
+    let prompt = `你是一個資深 QA 測試工程師。請分析以下網頁截圖、可互動元件列表和 DOM 結構，產出**以使用者旅程為核心的測試計畫**。
 
 ## 頁面資訊
 - URL: ${pageInfo.url}
 - 標題: ${pageInfo.title}
+
+## 當前頁面狀態判斷
+觀察截圖，判斷：
+- 這是什麼類型的頁面？（登入頁、首頁、列表頁、表單頁、設定頁...）
+- 使用者目前是否已登入？（有使用者名稱、頭像、登出按鈕 = 已登入）
+- 頁面的核心功能是什麼？
+
+**重要：根據當前狀態產出合理的測試。如果使用者已登入，不要產出「未登入被重導」的測試。如果在登入頁，不要產出需要登入後才能操作的測試。**
 
 ## 可互動元件列表（已從 DOM 實際掃描）
 ${elementsSummary}
@@ -222,25 +230,27 @@ ${domTreeFormatted}
 `;
     }
 
-    prompt += `## Selector 產出規則（嚴格遵守）
-1. 優先使用 #id（如果元素有 id）
-2. 其次 [data-testid="xxx"]
-3. 其次 [aria-label="xxx"] 或 [name="xxx"]
-4. 最後 tag.class 組合
-5. 絕對不要猜測或編造 DOM 中不存在的 selector
-6. 每個 selector 必須在上方 DOM 結構中能找到對應元素
+    prompt += `## Selector 規則（嚴格遵守）
 
-## 最重要規則
-**你只能使用上方「可互動元件列表」或「DOM 結構」中提供的 selector。絕對不要自己猜 selector 或編造不存在的 selector。**
-如果某個功能在元件列表中找不到對應的 selector，就不要為它建立測試案例。
+### 優先順序（必須按此順序選擇）
+1. **text=XXX** — 用元素的可見文字內容定位（最穩定），例如 text=登入、text=送出
+2. **role=XXX[name=YYY]** — 用 ARIA role 定位，例如 role=button[name=登入]
+3. **#id** — 用元素 id 定位
+4. **[data-testid=XXX]** — 用 data-testid 屬性定位
+5. **[aria-label=XXX]** 或 **[name=XXX]** 或 **[placeholder=XXX]** — 用語意屬性定位
+
+### 絕對禁止
+- **禁止** nth-of-type、nth-child 等位置型 selector
+- **禁止** div > div > button 等依賴 DOM 層級的 selector
+- **禁止** tag.class 組合（如 button.btn-primary）
+- **禁止** 猜測或編造 DOM 中不存在的 selector
+- 如果某功能在元件列表或 DOM 中找不到穩定的語意 selector，**跳過該步驟**
 
 `;
 
     if (specContent) {
-      prompt += `## 規格書內容
+      prompt += `## 額外上下文
 ${specContent.slice(0, 5000)}
-
-請根據規格書內容，產出更精準的測試案例，確保涵蓋規格書中描述的功能。
 
 `;
     }
@@ -252,54 +262,55 @@ ${specContent.slice(0, 5000)}
         .join('\n');
       if (behaviorsSummary) {
         prompt += `## AI 探索行為結果（已實際點擊驗證）
-以下是 AI 自動探索各元素後觀察到的實際行為，請據此規劃更精準的測試案例：
 ${behaviorsSummary}
-
-注意：
-- toggle 類型的元素需要測試「點擊一次」和「再次點擊恢復」兩種狀態
-- navigation 類型的元素需要驗證導航目標是否正確
-- modal 類型的元素需要測試開啟和關閉
-- dropdown 類型的元素需要測試展開、選擇和收合
 
 `;
       }
     }
 
-    prompt += `## 要求
-- 仔細分析截圖（包括全頁），找出所有可互動元件
-- components: 列出 10-20 個主要元件
-- testPlan: 產出 12-18 個測試案例，涵蓋不同功能區域
+    prompt += `## 測試計畫要求
 
-## 必須檢查的 UI 模式（如果頁面中存在）
-1. **輪播/Carousel** — 左右箭頭可點選的圖片或卡片區域
-2. **下拉篩選器** — 點擊展開的 checkbox 列表或選項
-3. **進階篩選** — 展開後有多組 checkbox + 範圍輸入（最低-最高）
-4. **Tab 切換** — 頁面中的分頁標籤（如：全部/熱門/最新）
-5. **排序選單** — 排序方式的下拉選單
-6. **分頁** — 底部頁碼導航，URL 會帶分頁參數
-7. **側邊欄連結** — 右側邊欄的人員卡片或推薦連結，點擊會開新頁
-8. **穿插廣告** — 列表中穿插的廣告區塊，確認不影響功能
-9. **搜尋框** — 關鍵字輸入 + 搜尋按鈕
-- steps: 每個案例 2-4 個步驟
-- description 限 15 字，expectedResult 限 25 字
+### 核心原則：使用者旅程，不是元件驗證
+每個測試案例必須是一個**完整的使用者操作流程**，代表一個使用者意圖。
+
+**好的測試案例範例：**
+- "正常帳密登入" → 填帳號 → 填密碼 → 點登入 → 驗證跳轉到首頁
+- "搜尋商品" → 在搜尋框輸入關鍵字 → 點搜尋 → 驗證結果列表更新
+- "篩選後分頁" → 選擇篩選條件 → 驗證結果 → 點下一頁 → 驗證分頁正常
+
+**禁止的測試案例（不要產出）：**
+- "驗證按鈕可見" — 廢話，看截圖就知道
+- "驗證標題文字" — 沒有業務意義
+- "驗證輸入框存在" — 元件存在性不需要測試
+- 任何只有一個 assert 步驟的測試
+
+### 覆蓋率要求
+- 如果上方有「AI 團隊討論紀錄」和「必須覆蓋的測試重點」，你 **必須** 為每個討論重點產出至少一個對應的測試案例，不能遺漏
+- 如果討論提到某功能但 DOM 中找不到元素，產出一個 category="missing" 的案例標記
+
+### 數量與品質
+- components: 列出 5-15 個主要元件
+- testPlan: 產出 **6-12 個**高品質測試案例（如果討論重點多，可以超過 10 個）
+- 每個案例 **2-5 個**連續操作步驟
+- 每個案例至少包含一個有業務意義的操作（click/fill/select）和一個驗證點
+- description 限 15 字，expectedResult 限 30 字
 - 只回傳純 JSON，不要 markdown fence
-- 特別注意：下拉選單篩選、搜尋功能、分頁、排序、連結導航
 
 回傳 JSON：
 {
   "components": [
-    { "name": "名稱", "type": "form|dropdown|checkbox|link|button|input|filter|navigation|pagination", "selector": "CSS", "description": "簡述" }
+    { "name": "名稱", "type": "form|dropdown|checkbox|link|button|input|filter|navigation|pagination", "selector": "穩定的語意 selector", "description": "簡述" }
   ],
   "testPlan": [
     {
       "id": "TC-001",
-      "name": "測試案例名稱",
-      "category": "分類（如：表單驗證、導航、互動等）",
+      "name": "使用者旅程名稱（動詞開頭）",
+      "category": "分類（如：登入流程、搜尋功能、表單提交、導航等）",
       "priority": "high|medium|low",
       "steps": [
-        { "action": "click|fill|select|wait|assert|navigate", "target": "CSS selector", "value": "填入的值（如適用）", "description": "步驟描述" }
+        { "action": "click|fill|select|wait|assert|navigate|hover|press", "target": "語意 selector（text=XXX 或 role=XXX 或 #id）", "value": "填入的值（如適用）", "description": "步驟描述" }
       ],
-      "expectedResult": "預期結果描述"
+      "expectedResult": "預期結果描述（具體的頁面變化）"
     }
   ]
 }`;
@@ -342,13 +353,14 @@ ${behaviorsSummary}
   async executeTestCase(
     testCase: any,
     screenshotBase64: string,
-    pageInfo: { url: string; title: string }
+    pageInfo: { url: string; title: string },
+    stepsSummary?: Array<{ action: string; target?: string; description: string; success: boolean; error?: string }>
   ): Promise<TestCaseResult> {
     // 裁判 A（嚴格 - temperature 0.1）
-    const judgeA = await this.singleJudge(testCase, screenshotBase64, pageInfo, 0.1);
+    const judgeA = await this.singleJudge(testCase, screenshotBase64, pageInfo, 0.1, stepsSummary);
 
     // 裁判 B（寬鬆 - temperature 0.5）
-    const judgeB = await this.singleJudge(testCase, screenshotBase64, pageInfo, 0.5);
+    const judgeB = await this.singleJudge(testCase, screenshotBase64, pageInfo, 0.5, stepsSummary);
 
     if (judgeA.passed === judgeB.passed) {
       // 一致 → 直接採用
@@ -359,7 +371,7 @@ ${behaviorsSummary}
     }
 
     // 分歧 → 裁判 C 仲裁
-    const judgeC = await this.arbitrate(testCase, screenshotBase64, pageInfo, judgeA, judgeB);
+    const judgeC = await this.arbitrate(testCase, screenshotBase64, pageInfo, judgeA, judgeB, stepsSummary);
     return {
       passed: judgeC.passed,
       actualResult: `[仲裁決定] ${judgeC.actualResult}\n裁判A(嚴格): ${judgeA.passed ? 'PASS' : 'FAIL'} - ${judgeA.actualResult}\n裁判B(寬鬆): ${judgeB.passed ? 'PASS' : 'FAIL'} - ${judgeB.actualResult}`,
@@ -371,9 +383,18 @@ ${behaviorsSummary}
     testCase: any,
     screenshotBase64: string,
     pageInfo: { url: string; title: string },
-    temperature: number
+    temperature: number,
+    stepsSummary?: Array<{ action: string; target?: string; description: string; success: boolean; error?: string }>
   ): Promise<{ passed: boolean; actualResult: string }> {
-    const prompt = `你是一個前端測試工程師。請根據以下測試案例和目前頁面截圖，判斷測試是否通過。
+    let stepsContext = '';
+    if (stepsSummary && stepsSummary.length > 0) {
+      const stepsText = stepsSummary.map((s, i) =>
+        `${i + 1}. ${s.action}${s.target ? ` → ${s.target}` : ''}: ${s.description} — ${s.success ? '✓ 成功' : `✗ 失敗${s.error ? `: ${s.error.slice(0, 60)}` : ''}`}`
+      ).join('\n');
+      stepsContext = `\n## 步驟執行記錄\n${stepsText}\n`;
+    }
+
+    const prompt = `你是一個資深前端測試工程師。請根據以下測試案例的**步驟執行記錄**和**最終頁面截圖**，綜合判斷測試是否通過。
 
 ## 頁面資訊
 - URL: ${pageInfo.url}
@@ -383,15 +404,17 @@ ${behaviorsSummary}
 - ID: ${testCase.id}
 - 名稱: ${testCase.name}
 - 預期結果: ${testCase.expectedResult}
-
-## 要求
-觀察截圖，判斷目前頁面狀態是否符合測試的預期結果。
+${stepsContext}
+## 判斷規則
+1. 如果有步驟執行失敗（selector 找不到、timeout），該步驟相關的預期結果無法驗證 → 判定 FAIL，並說明哪個步驟失敗
+2. 如果所有步驟都成功，觀察截圖判斷最終頁面狀態是否符合預期
+3. actualResult 必須描述**具體觀察**（如「點擊登入後跳轉至 /dashboard，顯示歡迎訊息」），不要用模糊語句（如「測試通過」「結果正確」）
 
 ## 回傳格式
 回傳 JSON：
 {
   "passed": true/false,
-  "actualResult": "實際觀察到的結果描述"
+  "actualResult": "具體觀察描述（含 URL 變化、頁面內容變化等）"
 }`;
 
     try {
@@ -415,8 +438,17 @@ ${behaviorsSummary}
     screenshotBase64: string,
     pageInfo: { url: string; title: string },
     judgeA: { passed: boolean; actualResult: string },
-    judgeB: { passed: boolean; actualResult: string }
+    judgeB: { passed: boolean; actualResult: string },
+    stepsSummary?: Array<{ action: string; target?: string; description: string; success: boolean; error?: string }>
   ): Promise<{ passed: boolean; actualResult: string }> {
+    let stepsContext = '';
+    if (stepsSummary && stepsSummary.length > 0) {
+      const stepsText = stepsSummary.map((s, i) =>
+        `${i + 1}. ${s.action}${s.target ? ` → ${s.target}` : ''}: ${s.description} — ${s.success ? '✓' : `✗${s.error ? `: ${s.error.slice(0, 40)}` : ''}`}`
+      ).join('\n');
+      stepsContext = `\n## 步驟執行記錄\n${stepsText}\n`;
+    }
+
     const prompt = `你是一個資深測試仲裁裁判。兩個測試裁判對同一個測試案例產生分歧，請你做最終判定。
 
 ## 頁面資訊
@@ -427,13 +459,13 @@ ${behaviorsSummary}
 - ID: ${testCase.id}
 - 名稱: ${testCase.name}
 - 預期結果: ${testCase.expectedResult}
-
+${stepsContext}
 ## 兩位裁判的判定
 裁判A（嚴格）判定：${judgeA.passed ? 'PASS' : 'FAIL'} — ${judgeA.actualResult}
 裁判B（寬鬆）判定：${judgeB.passed ? 'PASS' : 'FAIL'} — ${judgeB.actualResult}
 
 ## 要求
-觀察截圖，綜合兩位裁判的意見，做出最終判定。
+綜合步驟執行記錄、截圖、兩位裁判的意見，做出最終判定。如果步驟有失敗，優先考慮步驟失敗的影響。
 
 只回傳 JSON：
 { "passed": true/false, "actualResult": "仲裁理由(30字內)" }`;

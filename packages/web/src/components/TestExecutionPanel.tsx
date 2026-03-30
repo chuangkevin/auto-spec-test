@@ -211,6 +211,32 @@ export default function TestExecutionPanel({
               setDiscussion(prev => [...prev, d]);
               break;
             }
+            case 'explore-start': {
+              const d = msg.data as { total: number };
+              setCurrentStep(`AI 正在探索頁面元素（共 ${d.total} 個）...`);
+              break;
+            }
+            case 'explore-step': {
+              const d = msg.data as {
+                index: number; total: number;
+                element: { tag: string; text: string; selector: string };
+                status: string;
+                behavior?: Behavior;
+              };
+              if (d.status === 'exploring') {
+                setCurrentStep(`探索中 ${d.index + 1}/${d.total}：<${d.element.tag}> ${d.element.text || d.element.selector}`);
+              } else if (d.status === 'done' && d.behavior) {
+                setBehaviors(prev => [...prev, d.behavior!]);
+                setCurrentStep(`已探索 ${d.index + 1}/${d.total}：${d.behavior.type} — ${d.behavior.description}`);
+              }
+              break;
+            }
+            case 'need-manual-login': {
+              const d = msg.data as { message: string };
+              setCurrentStep(d.message);
+              setStatus('manual');
+              break;
+            }
             case 'error': {
               const d = msg.data as { message: string };
               setError(d.message);
@@ -317,9 +343,15 @@ export default function TestExecutionPanel({
   };
 
   /** 進入手動操作模式 */
-  const handleNeedManual = () => {
+  const handleNeedManual = async () => {
     setStatus('manual');
     setCurrentStep('請在瀏覽器中完成操作（登入、選擇帳號等），完成後點「準備好了」');
+    // 通知 server 進入手動模式（server 會調整截圖頻率）
+    if (sessionId) {
+      try {
+        await api.post(`/api/test-runner/${sessionId}/manual-start`);
+      } catch { /* ignore */ }
+    }
   };
 
   /** 手動操作完成，開始掃描 */
@@ -328,6 +360,11 @@ export default function TestExecutionPanel({
     setCurrentStep('');
 
     try {
+      // 通知 server 結束手動模式（會保存 cookies/localStorage 並恢復快速截圖）
+      try {
+        await api.post(`/api/test-runner/${sessionId}/manual-end`);
+      } catch { /* ignore */ }
+
       // 重新截圖（使用者操作後的畫面）
       try {
         const ssRes = await api.get<{ screenshot: string; pageInfo: PageInfo }>(
@@ -346,25 +383,26 @@ export default function TestExecutionPanel({
 
   /** 探索 + 掃描流程（共用邏輯） */
   const runExploreAndScan = async (sid: string) => {
-    // 3. Explore page behaviors
+    // 3. Explore page behaviors (結果透過 WS 即時推送)
     setStatus('exploring');
     setCurrentStep('AI 正在探索頁面行為...');
+    setBehaviors([]); // 清除舊資料，WS explore-step 會逐筆填入
     try {
-      const exploreRes = await api.post<{ behaviors: Behavior[] }>(
+      await api.post<{ behaviors: Behavior[] }>(
         `/api/test-runner/${sid}/explore`,
       );
-      setBehaviors(exploreRes.behaviors || []);
     } catch {
       // 探索失敗不阻斷流程
     }
 
-    // 4. Multi-AI Discussion
+    // 4. Multi-AI Discussion（逐筆透過 WS 'discussion' 事件推送）
     setCurrentStep('AI 團隊正在討論測試策略...');
+    setDiscussion([]); // 清除舊討論
     try {
-      const discussRes = await api.post<{
+      await api.post<{
         discussion: Array<{ role: string; message: string }>;
       }>(`/api/test-runner/${sid}/discuss`);
-      setDiscussion(discussRes.discussion || []);
+      // 不用 setDiscussion — WS 已經即時推送了每筆討論
     } catch {
       // 討論失敗不阻斷
     }
@@ -489,8 +527,13 @@ export default function TestExecutionPanel({
     } catch { /* ignore */ }
   };
 
-  const handleManual = () => {
+  const handleManual = async () => {
     setStatus('manual');
+    if (sessionId) {
+      try {
+        await api.post(`/api/test-runner/${sessionId}/manual-start`);
+      } catch { /* ignore */ }
+    }
   };
 
   const handleResumeFromManual = async () => {
@@ -888,7 +931,7 @@ export default function TestExecutionPanel({
               {status === 'exploring' && (
                 <div className="flex items-center gap-2 text-sm text-blue-600">
                   <MousePointerClick size={16} className="animate-pulse" />
-                  AI 正在探索頁面行為...
+                  {currentStep || 'AI 正在探索頁面行為...'}
                 </div>
               )}
 

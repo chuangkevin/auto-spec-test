@@ -49,6 +49,7 @@ export default async function projectRoutes(fastify: FastifyInstance): Promise<v
       SELECT p.id, p.name, p.product_id, p.description, p.status,
              p.created_by, p.created_at, p.updated_at,
              p.gitea_org, p.gitea_repo, p.gitea_project_id,
+             p.test_url,
              pr.name as product_name
       FROM projects p
       LEFT JOIN products pr ON p.product_id = pr.id
@@ -108,6 +109,7 @@ export default async function projectRoutes(fastify: FastifyInstance): Promise<v
         SELECT p.id, p.name, p.product_id, p.description, p.status,
                p.created_by, p.created_at, p.updated_at,
                p.gitea_org, p.gitea_repo, p.gitea_project_id,
+               p.test_url,
                pr.name as product_name
         FROM projects p
         LEFT JOIN products pr ON p.product_id = pr.id
@@ -155,14 +157,15 @@ export default async function projectRoutes(fastify: FastifyInstance): Promise<v
       gitea_org?: string;
       gitea_repo?: string;
       gitea_project_id?: number;
+      test_url?: string;
     };
   }>('/api/projects/:id', async (request, reply) => {
     const { id } = request.params;
-    const { name, product_id, description, status, gitea_org, gitea_repo, gitea_project_id } = request.body;
+    const { name, product_id, description, status, gitea_org, gitea_repo, gitea_project_id, test_url } = request.body;
     const db = getDb();
 
     const existing = db
-      .prepare('SELECT id, name, product_id, description, status, gitea_org, gitea_repo, gitea_project_id FROM projects WHERE id = ?')
+      .prepare('SELECT id, name, product_id, description, status, gitea_org, gitea_repo, gitea_project_id, test_url FROM projects WHERE id = ?')
       .get(id) as {
         id: string;
         name: string;
@@ -172,6 +175,7 @@ export default async function projectRoutes(fastify: FastifyInstance): Promise<v
         gitea_org: string | null;
         gitea_repo: string | null;
         gitea_project_id: number | null;
+        test_url: string | null;
       } | undefined;
 
     if (!existing) {
@@ -197,7 +201,7 @@ export default async function projectRoutes(fastify: FastifyInstance): Promise<v
 
     db.prepare(
       `UPDATE projects SET name = ?, product_id = ?, description = ?, status = ?,
-       gitea_org = ?, gitea_repo = ?, gitea_project_id = ?,
+       gitea_org = ?, gitea_repo = ?, gitea_project_id = ?, test_url = ?,
        updated_at = datetime('now') WHERE id = ?`,
     ).run(
       name ?? existing.name,
@@ -207,6 +211,7 @@ export default async function projectRoutes(fastify: FastifyInstance): Promise<v
       gitea_org !== undefined ? (gitea_org || null) : existing.gitea_org,
       gitea_repo !== undefined ? (gitea_repo || null) : existing.gitea_repo,
       gitea_project_id !== undefined ? (gitea_project_id || null) : existing.gitea_project_id,
+      test_url !== undefined ? (test_url || null) : existing.test_url,
       id,
     );
 
@@ -215,6 +220,7 @@ export default async function projectRoutes(fastify: FastifyInstance): Promise<v
         SELECT p.id, p.name, p.product_id, p.description, p.status,
                p.created_by, p.created_at, p.updated_at,
                p.gitea_org, p.gitea_repo, p.gitea_project_id,
+               p.test_url,
                pr.name as product_name
         FROM projects p
         LEFT JOIN products pr ON p.product_id = pr.id

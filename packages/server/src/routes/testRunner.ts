@@ -202,11 +202,12 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
     }
 
     try {
-      const result = await explorerService.explorePage(sessionId);
+      const result = await explorerService.explorePage(sessionId, state.broadcast);
       // 儲存探索結果到 state，供 scan 使用
       state.behaviors = result.behaviors;
       return { behaviors: result.behaviors };
     } catch (err: any) {
+      console.error(`[explore] 錯誤:`, err);
       return reply.status(500).send({ error: err.message });
     }
   });
@@ -354,6 +355,14 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
     const testRunId = Number(runResult.lastInsertRowid);
     state.testRunId = testRunId;
 
+    // 自動回存 URL 到專案
+    if (state.projectId && state.url) {
+      try {
+        db.prepare('UPDATE projects SET test_url = ?, updated_at = datetime(\'now\') WHERE id = ?')
+          .run(state.url, state.projectId);
+      } catch { /* ignore */ }
+    }
+
     // 回傳後開始非同步執行
     reply.send({ testRunId, totalCases: casesToRun.length });
 
@@ -429,6 +438,15 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
     state.paused = true;
     state.status = 'manual';
     broadcastStatus(state);
+
+    // 切換到較慢的截圖串流（減少與使用者操作的競爭）
+    browserService.stopScreenshotStream(sessionId);
+    browserService.startScreenshotStream(sessionId, (base64) => {
+      if (state.broadcast) {
+        state.broadcast({ type: 'screenshot', data: base64 });
+      }
+    }, 1500);
+
     return { ok: true };
   });
 
@@ -440,9 +458,23 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
     const state = runnerStates.get(sessionId);
     if (!state) return reply.status(404).send({ error: 'Session 不存在' });
 
+    // 保存登入後的 session state（cookies + localStorage）以便後續還原
+    try {
+      state.savedSessionState = await browserService.saveSessionState(sessionId);
+    } catch { /* ignore */ }
+
     state.paused = false;
     state.status = 'running';
     broadcastStatus(state);
+
+    // 恢復較快的截圖串流
+    browserService.stopScreenshotStream(sessionId);
+    browserService.startScreenshotStream(sessionId, (base64) => {
+      if (state.broadcast) {
+        state.broadcast({ type: 'screenshot', data: base64 });
+      }
+    }, 500);
+
     return { ok: true };
   });
 
@@ -474,15 +506,31 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
     const { x, y } = request.body as any;
     try {
       const { page } = browserService.getSession(sessionId);
+
+      // 點擊前先暫停截圖串流，避免與 page.screenshot() 競爭
+      browserService.stopScreenshotStream(sessionId);
+
       await page.mouse.click(x, y);
 
-      // 操作後立即截圖並 WS 推送
+      // 等待頁面穩定（導航、SPA 路由等）
+      await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
+      await new Promise(r => setTimeout(r, 300));
+
+      // 操作後截圖含 pageInfo 並 WS 推送
       try {
         const screenshot = await browserService.screenshot(sessionId);
+        const pageInfo = await browserService.getPageInfo(sessionId);
         if (state.broadcast) {
-          state.broadcast({ type: 'screenshot', data: screenshot });
+          state.broadcast({ type: 'screenshot', data: { screenshot, pageInfo } });
         }
       } catch {}
+
+      // 恢復截圖串流
+      browserService.startScreenshotStream(sessionId, (base64) => {
+        if (state.broadcast) {
+          state.broadcast({ type: 'screenshot', data: base64 });
+        }
+      }, state.status === 'manual' ? 1500 : 500);
 
       return { ok: true };
     } catch (err: any) {
@@ -504,11 +552,12 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
       const { page } = browserService.getSession(sessionId);
       await page.keyboard.type(text);
 
-      // 操作後立即截圖並 WS 推送
+      // 操作後截圖含 pageInfo
       try {
         const screenshot = await browserService.screenshot(sessionId);
+        const pageInfo = await browserService.getPageInfo(sessionId);
         if (state.broadcast) {
-          state.broadcast({ type: 'screenshot', data: screenshot });
+          state.broadcast({ type: 'screenshot', data: { screenshot, pageInfo } });
         }
       } catch {}
 
@@ -532,11 +581,12 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
       const { page } = browserService.getSession(sessionId);
       await page.keyboard.press(key);
 
-      // 操作後立即截圖並 WS 推送
+      // 操作後截圖含 pageInfo
       try {
         const screenshot = await browserService.screenshot(sessionId);
+        const pageInfo = await browserService.getPageInfo(sessionId);
         if (state.broadcast) {
-          state.broadcast({ type: 'screenshot', data: screenshot });
+          state.broadcast({ type: 'screenshot', data: { screenshot, pageInfo } });
         }
       } catch {}
 
@@ -772,9 +822,16 @@ async function executeTests(
     }
 
     const stepErrors: string[] = [];
+    const stepsSummary: Array<{ action: string; target?: string; description: string; success: boolean; error?: string }> = [];
 
     try {
-      // 每個測試案例開始前，確保在正確的頁面且已登入
+      // 每個測試案例開始前，重整頁面確保乾淨狀態（清除殘留彈窗、modal 等）
+      try {
+        await browserService.navigateTo(state.sessionId, state.url);
+        await new Promise((r) => setTimeout(r, 1000));
+      } catch { /* ignore */ }
+
+      // 確保在正確的頁面且已登入
       try {
         const currentInfo = await browserService.getPageInfo(state.sessionId);
         const currentOrigin = new URL(currentInfo.url).origin;
@@ -786,12 +843,82 @@ async function executeTests(
           await new Promise((r) => setTimeout(r, 1000));
         }
 
-        // 如果在登入頁面，還原 session state（cookies + localStorage）
-        const isLogin = await browserService.isLoginPage(state.sessionId);
-        if (isLogin && state.savedSessionState) {
-          await browserService.restoreSessionState(state.sessionId, state.savedSessionState);
-          await browserService.navigateTo(state.sessionId, state.url);
-          await new Promise((r) => setTimeout(r, 1000));
+        // 自主登入恢復：偵測是否在登入頁，自動嘗試重新登入
+        const loginDetect = await browserService.detectLoginPage(state.sessionId);
+        if (loginDetect.isLoginPage) {
+          console.log(`[testRunner] TC-${tc.id}: 偵測到登入頁面，嘗試自動恢復登入...`);
+
+          let loginRecovered = false;
+
+          // 策略 1: 有保存的 session state → 還原 cookies/localStorage
+          if (state.savedSessionState) {
+            try {
+              await browserService.restoreSessionState(state.sessionId, state.savedSessionState);
+              await browserService.navigateTo(state.sessionId, state.url);
+              await new Promise((r) => setTimeout(r, 1500));
+              // 驗證是否還在登入頁
+              const afterRestore = await browserService.detectLoginPage(state.sessionId);
+              if (!afterRestore.isLoginPage) {
+                loginRecovered = true;
+                console.log(`[testRunner] 登入恢復成功（session state 還原）`);
+              }
+            } catch { /* ignore */ }
+          }
+
+          // 策略 2: 頁面有帳號選擇按鈕 → 自動點擊第一個帳號
+          if (!loginRecovered && loginDetect.hasAccountSelector && loginDetect.clickableAccounts.length > 0) {
+            try {
+              const account = loginDetect.clickableAccounts[0];
+              console.log(`[testRunner] 嘗試點擊帳號: ${account.text} (${account.selector})`);
+              await browserService.click(state.sessionId, account.selector);
+              await new Promise((r) => setTimeout(r, 2000));
+              // 等待可能的頁面跳轉
+              try { await browserService.getSession(state.sessionId).page.waitForLoadState('networkidle', { timeout: 5000 }); } catch { /* ignore */ }
+              // 驗證是否離開登入頁
+              const afterClick = await browserService.detectLoginPage(state.sessionId);
+              if (!afterClick.isLoginPage) {
+                loginRecovered = true;
+                console.log(`[testRunner] 登入恢復成功（點擊帳號 ${account.text}）`);
+                // 保存新的 session state
+                try { state.savedSessionState = await browserService.saveSessionState(state.sessionId); } catch { /* ignore */ }
+              }
+            } catch (clickErr: any) {
+              console.warn(`[testRunner] 點擊帳號失敗: ${clickErr.message}`);
+            }
+          }
+
+          // 策略 3: 有密碼表單 + 有保存的 session → 嘗試導航到目標 URL（可能 cookie 還有效）
+          if (!loginRecovered && loginDetect.hasPasswordForm) {
+            try {
+              await browserService.navigateTo(state.sessionId, state.url);
+              await new Promise((r) => setTimeout(r, 1500));
+              const afterNav = await browserService.detectLoginPage(state.sessionId);
+              if (!afterNav.isLoginPage) {
+                loginRecovered = true;
+                console.log(`[testRunner] 登入恢復成功（直接導航）`);
+              }
+            } catch { /* ignore */ }
+          }
+
+          // 所有策略失敗 → 通知前端使用者手動登入
+          if (!loginRecovered) {
+            console.warn(`[testRunner] 自動登入恢復失敗，請求手動介入`);
+            if (state.broadcast) {
+              state.broadcast({
+                type: 'need-manual-login',
+                data: { message: '偵測到登入頁面，自動登入失敗，請手動登入後繼續', testCaseId: tc.id },
+              });
+            }
+            // 進入手動模式，等待使用者登入
+            state.status = 'manual';
+            state.paused = true;
+            broadcastStatus(state);
+            // 等待使用者完成手動登入（manual-end API 會解除 paused）
+            while (state.paused && !state.stopped) {
+              await new Promise((r) => setTimeout(r, 500));
+            }
+            if (state.stopped) break;
+          }
         }
       } catch { /* ignore */ }
 
@@ -823,6 +950,15 @@ async function executeTests(
         if (stepError) {
           stepErrors.push(`步驟${s + 1}(${step.action} ${step.target || ''}): ${stepError}`);
         }
+
+        // 收集步驟執行摘要（供評判使用）
+        stepsSummary.push({
+          action: step.action,
+          target: step.target,
+          description: step.description || `${step.action} ${step.target || ''}`,
+          success: !stepError,
+          error: stepError || undefined,
+        });
 
         // AI 自問：這步操作的結果正常嗎？
         if (needsSelfCheck && beforeStepScreenshot) {
@@ -859,7 +995,7 @@ async function executeTests(
       // 執行完所有步驟後，截圖並讓 AI 判斷結果
       const screenshot = await browserService.screenshot(state.sessionId);
       const pageInfo = await browserService.getPageInfo(state.sessionId);
-      const result = await pageScannerService.executeTestCase(tc, screenshot, pageInfo);
+      const result = await pageScannerService.executeTestCase(tc, screenshot, pageInfo, stepsSummary);
       result.screenshot = screenshot;
 
       // 如果有步驟錯誤，附加到 actualResult

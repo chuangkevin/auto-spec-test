@@ -23,6 +23,7 @@ export interface Project {
   gitea_org?: string;
   gitea_repo?: string;
   gitea_project_id?: number;
+  test_url?: string;
   created_by: number;
   created_at: string;
   updated_at: string;

@@ -144,14 +144,28 @@ ${context}
   }
 
   /**
-   * 階段 2: 總結討論，產出測試計畫
+   * 階段 2: 總結討論，提取結構化測試重點清單
    */
   formatDiscussionForPrompt(discussion: DiscussionMessage[]): string {
     if (discussion.length === 0) return '';
-    return `## AI 團隊討論結果
-${discussion.map(d => `### ${d.name}（${d.role}）\n${d.message}`).join('\n\n')}
 
-請根據以上團隊討論結果，產出更全面的測試計畫。
+    // 先列出原始討論
+    const rawDiscussion = discussion
+      .map(d => `${d.name}（${d.role}）: ${d.message}`)
+      .join('\n');
+
+    return `## AI 團隊討論紀錄
+${rawDiscussion}
+
+## 必須覆蓋的測試重點（從討論中提取）
+
+請仔細閱讀上方討論，從中提取所有被提到的功能、風險、建議，然後：
+
+1. **為每個被提到的功能/風險產出至少一個測試案例**
+2. 在每個測試案例的 name 中標註它對應哪個討論重點
+3. 如果討論提到某功能但頁面 DOM 中找不到對應元素，在 testPlan 最後加一個 category="missing" 的案例標記該功能缺失
+
+**這是硬性要求：討論中提到的每個測試方向都必須有對應的 TC，不能遺漏。**
 `;
   }
 
