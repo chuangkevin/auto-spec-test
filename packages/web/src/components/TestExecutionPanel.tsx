@@ -503,6 +503,43 @@ export default function TestExecutionPanel({
     setError(null);
   };
 
+  /** 重跑全部（保留測試案例，不重新掃描） */
+  const handleRerunAll = async () => {
+    if (!sessionId) return;
+    setError(null);
+    setStatus('running');
+    setTestCases(prev => prev.map(tc => ({ ...tc, status: 'pending' as const, selected: true, actualResult: undefined, screenshot: undefined })));
+    setReviewResult(null);
+    try {
+      const ids = testCases.map(tc => tc.id);
+      const execRes = await api.post<{ testRunId: number }>(`/api/test-runner/${sessionId}/execute`, { testCases: ids });
+      if (execRes.testRunId) setTestRunId(execRes.testRunId);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '重跑失敗');
+      setStatus('ready');
+    }
+  };
+
+  /** 重跑失敗的案例 */
+  const handleRerunFailed = async () => {
+    if (!sessionId) return;
+    const failedIds = testCases.filter(tc => tc.status === 'failed').map(tc => tc.id);
+    if (failedIds.length === 0) return;
+    setError(null);
+    setStatus('running');
+    setTestCases(prev => prev.map(tc =>
+      failedIds.includes(tc.id) ? { ...tc, status: 'pending' as const, actualResult: undefined, screenshot: undefined } : tc
+    ));
+    setReviewResult(null);
+    try {
+      const execRes = await api.post<{ testRunId: number }>(`/api/test-runner/${sessionId}/execute`, { testCases: failedIds });
+      if (execRes.testRunId) setTestRunId(execRes.testRunId);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '重跑失敗');
+      setStatus('ready');
+    }
+  };
+
   /* ---- Derived ---- */
 
   const totalCases = testCases.length;
@@ -1106,6 +1143,28 @@ export default function TestExecutionPanel({
                     %
                   </span>
                 </span>
+              </div>
+
+              {/* 重跑按鈕 */}
+              <div className="flex gap-2 mt-3">
+                <button
+                  type="button"
+                  onClick={handleRerunAll}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700"
+                >
+                  <RefreshCw size={14} />
+                  重跑全部
+                </button>
+                {failedCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleRerunFailed}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-red-600 px-3 py-2 text-xs font-medium text-white hover:bg-red-700"
+                  >
+                    <RefreshCw size={14} />
+                    重跑失敗 ({failedCount})
+                  </button>
+                )}
               </div>
             </div>
           )}
