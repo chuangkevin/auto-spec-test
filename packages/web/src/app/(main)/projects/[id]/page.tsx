@@ -463,6 +463,7 @@ export default function ProjectDetailPage() {
     try {
       const res = await api.post<{ test_script: TestScript }>(
         `/api/projects/${projectId}/test-scripts/generate`,
+        { specificationId: spec?.id },
       );
       setTestScript(res.test_script);
       // Refresh project to get updated status
