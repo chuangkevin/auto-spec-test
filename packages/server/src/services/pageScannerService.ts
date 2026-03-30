@@ -139,6 +139,45 @@ async function callGeminiVision(
   throw new Error('AI API 呼叫失敗，已達最大重試次數。');
 }
 
+/** 把 DOM tree JSON 轉成 indent 格式的可讀文字 */
+function formatDomTree(node: any, indent = 0): string {
+  if (!node) return '';
+  const pad = '  '.repeat(indent);
+  const tag = node.tag || 'unknown';
+
+  // 組裝屬性
+  const attrParts: string[] = [];
+  if (node.id) attrParts.push(`id="${node.id}"`);
+  if (node.class) attrParts.push(`class="${node.class}"`);
+  if (node.attrs) {
+    for (const [k, v] of Object.entries(node.attrs)) {
+      attrParts.push(`${k}="${v}"`);
+    }
+  }
+  if (node.selector) attrParts.push(`selector="${node.selector}"`);
+
+  const attrStr = attrParts.length > 0 ? ' ' + attrParts.join(' ') : '';
+
+  // 葉節點：顯示文字內容
+  if (!node.children || node.children.length === 0) {
+    const text = node.text ? node.text.slice(0, 40) : '';
+    if (text) {
+      return `${pad}<${tag}${attrStr}>${text}</${tag}>`;
+    }
+    return `${pad}<${tag}${attrStr}>`;
+  }
+
+  // 有子節點
+  const lines: string[] = [];
+  lines.push(`${pad}<${tag}${attrStr}>`);
+  for (const child of node.children) {
+    const childStr = formatDomTree(child, indent + 1);
+    if (childStr) lines.push(childStr);
+  }
+  lines.push(`${pad}</${tag}>`);
+  return lines.join('\n');
+}
+
 class PageScannerService {
   /** 掃描頁面，產出測試計畫 */
   async scanPage(
@@ -146,7 +185,8 @@ class PageScannerService {
     elements: Array<any>,
     pageInfo: { url: string; title: string },
     specContent?: string,
-    behaviors?: Array<{ selector: string; type: string; description: string }>
+    behaviors?: Array<{ selector: string; type: string; description: string }>,
+    domTree?: any
   ): Promise<ScanResult> {
     const elementsSummary = elements
       .slice(0, 80) // 掃描更多元素
@@ -162,6 +202,8 @@ class PageScannerService {
       })
       .join('\n');
 
+    const domTreeFormatted = domTree ? formatDomTree(domTree) : '';
+
     let prompt = `你是一個專業的前端測試工程師。請分析以下網頁截圖和可互動元件列表，產出測試計畫。
 
 ## 頁面資訊
@@ -171,8 +213,25 @@ class PageScannerService {
 ## 可互動元件列表（已從 DOM 實際掃描）
 ${elementsSummary}
 
+`;
+
+    if (domTreeFormatted) {
+      prompt += `## DOM 結構（從頁面實際提取）
+${domTreeFormatted}
+
+`;
+    }
+
+    prompt += `## Selector 產出規則（嚴格遵守）
+1. 優先使用 #id（如果元素有 id）
+2. 其次 [data-testid="xxx"]
+3. 其次 [aria-label="xxx"] 或 [name="xxx"]
+4. 最後 tag.class 組合
+5. 絕對不要猜測或編造 DOM 中不存在的 selector
+6. 每個 selector 必須在上方 DOM 結構中能找到對應元素
+
 ## 最重要規則
-**你只能使用上方「可互動元件列表」中提供的 selector。絕對不要自己猜 selector 或編造不存在的 selector。**
+**你只能使用上方「可互動元件列表」或「DOM 結構」中提供的 selector。絕對不要自己猜 selector 或編造不存在的 selector。**
 如果某個功能在元件列表中找不到對應的 selector，就不要為它建立測試案例。
 
 `;

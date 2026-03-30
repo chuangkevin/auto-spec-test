@@ -280,6 +280,7 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
       const screenshot = await browserService.fullPageScreenshot(sessionId);
       const elements = await browserService.getInteractiveElements(sessionId);
       const pageInfo = await browserService.getPageInfo(sessionId);
+      const domTree = await browserService.getDomTree(sessionId);
 
       // 如果有討論結果，加入 specContent
       let enrichedSpec = state.specContent || '';
@@ -292,7 +293,8 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
         elements,
         pageInfo,
         enrichedSpec || undefined,
-        state.behaviors
+        state.behaviors,
+        domTree
       );
 
       state.scanResult = scanResult;
@@ -465,6 +467,15 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
     try {
       const { page } = browserService.getSession(sessionId);
       await page.mouse.click(x, y);
+
+      // 操作後立即截圖並 WS 推送
+      try {
+        const screenshot = await browserService.screenshot(sessionId);
+        if (state.broadcast) {
+          state.broadcast({ type: 'screenshot', data: screenshot });
+        }
+      } catch {}
+
       return { ok: true };
     } catch (err: any) {
       return reply.status(500).send({ error: err.message });
@@ -484,6 +495,15 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
     try {
       const { page } = browserService.getSession(sessionId);
       await page.keyboard.type(text);
+
+      // 操作後立即截圖並 WS 推送
+      try {
+        const screenshot = await browserService.screenshot(sessionId);
+        if (state.broadcast) {
+          state.broadcast({ type: 'screenshot', data: screenshot });
+        }
+      } catch {}
+
       return { ok: true };
     } catch (err: any) {
       return reply.status(500).send({ error: err.message });
@@ -503,6 +523,15 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
     try {
       const { page } = browserService.getSession(sessionId);
       await page.keyboard.press(key);
+
+      // 操作後立即截圖並 WS 推送
+      try {
+        const screenshot = await browserService.screenshot(sessionId);
+        if (state.broadcast) {
+          state.broadcast({ type: 'screenshot', data: screenshot });
+        }
+      } catch {}
+
       return { ok: true };
     } catch (err: any) {
       return reply.status(500).send({ error: err.message });

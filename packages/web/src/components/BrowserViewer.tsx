@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useState } from 'react';
 import { Loader2, Monitor, Globe, MousePointer2 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -24,6 +24,9 @@ export default function BrowserViewer({
   onScreenshotUpdate,
 }: BrowserViewerProps) {
   const imgRef = useRef<HTMLImageElement>(null);
+  const typeBuffer = useRef('');
+  const typeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [focused, setFocused] = useState(false);
 
   const handleClick = useCallback(async (e: React.MouseEvent<HTMLImageElement>) => {
     if (!interactive || !sessionId || !imgRef.current) return;
@@ -53,13 +56,7 @@ export default function BrowserViewer({
 
     try {
       await api.post(`/api/test-runner/${sessionId}/click`, { x, y });
-      // 點擊後等一下再手動刷新截圖
-      setTimeout(async () => {
-        try {
-          const res = await api.get<{ screenshot: string }>(`/api/test-runner/${sessionId}/screenshot`);
-          if (res.screenshot && onScreenshotUpdate) onScreenshotUpdate(res.screenshot);
-        } catch {}
-      }, 500);
+      // 截圖更新完全靠 WS 推送，不再 polling
     } catch {
       // ignore click errors
     }
@@ -67,22 +64,25 @@ export default function BrowserViewer({
 
   const handleKeyDown = useCallback(async (e: React.KeyboardEvent) => {
     if (!interactive || !sessionId) return;
-    // 攔截常用按鍵送到 Playwright
-    if (e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape') {
-      e.preventDefault();
-      try {
-        await api.post(`/api/test-runner/${sessionId}/key`, { key: e.key });
-      } catch {}
-    }
-  }, [interactive, sessionId]);
+    e.preventDefault();
 
-  const handleType = useCallback(async (e: React.KeyboardEvent) => {
-    if (!interactive || !sessionId) return;
-    // 只處理可列印字元
+    // 特殊鍵
+    if (['Enter', 'Tab', 'Escape', 'Backspace', 'Delete', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+      await api.post(`/api/test-runner/${sessionId}/key`, { key: e.key });
+      return;
+    }
+
+    // 可列印字元（用 debounce 合併）
     if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
-      try {
-        await api.post(`/api/test-runner/${sessionId}/type`, { text: e.key });
-      } catch {}
+      typeBuffer.current += e.key;
+      if (typeTimer.current) clearTimeout(typeTimer.current);
+      typeTimer.current = setTimeout(async () => {
+        const text = typeBuffer.current;
+        typeBuffer.current = '';
+        if (text) {
+          await api.post(`/api/test-runner/${sessionId}/type`, { text });
+        }
+      }, 100);
     }
   }, [interactive, sessionId]);
 
@@ -114,7 +114,9 @@ export default function BrowserViewer({
         } border-gray-200 ${interactive ? 'cursor-pointer' : ''}`}
         style={{ aspectRatio: '16 / 9' }}
         tabIndex={interactive ? 0 : undefined}
-        onKeyDown={interactive ? (e) => { handleKeyDown(e); handleType(e); } : undefined}
+        onKeyDown={interactive ? handleKeyDown : undefined}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
       >
         {/* idle placeholder */}
         {status === 'idle' && !screenshot && (
@@ -162,6 +164,13 @@ export default function BrowserViewer({
         {interactive && screenshot && status === 'manual' && (
           <div className="absolute top-2 right-2 rounded bg-orange-500/80 px-2 py-1 text-[10px] text-white">
             點擊截圖操作瀏覽器
+          </div>
+        )}
+
+        {/* Focus indicator */}
+        {focused && interactive && (
+          <div className="absolute top-2 left-2 rounded bg-green-500/80 px-2 py-1 text-[10px] text-white animate-pulse">
+            ⌨️ 已聚焦，可打字
           </div>
         )}
 

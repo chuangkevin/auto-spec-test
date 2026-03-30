@@ -1,14 +1,27 @@
 import { chromium, Browser, Page, BrowserContext } from 'playwright';
 
+const MAX_SESSIONS = Number(process.env.MAX_BROWSER_SESSIONS) || 3;
+const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
 interface Session {
   context: BrowserContext;
   page: Page;
+  createdAt: number;
   streamInterval?: ReturnType<typeof setInterval>;
 }
 
 class BrowserService {
   private browser: Browser | null = null;
   private sessions = new Map<string, Session>();
+
+  private cleanupInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [id, session] of this.sessions) {
+      if (now - session.createdAt > SESSION_TTL_MS) {
+        this.closeSession(id);
+      }
+    }
+  }, 5 * 60 * 1000); // 每 5 分鐘檢查一次
 
   /** 啟動瀏覽器（lazy init） */
   async ensureBrowser(): Promise<Browser> {
@@ -20,12 +33,27 @@ class BrowserService {
 
   /** 建立新的測試 session */
   async createSession(sessionId: string): Promise<{ context: BrowserContext; page: Page }> {
+    // 如果已滿，關閉最舊的 session
+    if (this.sessions.size >= MAX_SESSIONS) {
+      let oldestId: string | null = null;
+      let oldestTime = Infinity;
+      for (const [id, session] of this.sessions) {
+        if (session.createdAt < oldestTime) {
+          oldestTime = session.createdAt;
+          oldestId = id;
+        }
+      }
+      if (oldestId) {
+        await this.closeSession(oldestId);
+      }
+    }
+
     const browser = await this.ensureBrowser();
     const context = await browser.newContext({
       viewport: { width: 1280, height: 720 },
     });
     const page = await context.newPage();
-    this.sessions.set(sessionId, { context, page });
+    this.sessions.set(sessionId, { context, page, createdAt: Date.now() });
     return { context, page };
   }
 
@@ -196,6 +224,67 @@ class BrowserService {
         });
       });
       return results;
+    })()`) as any;
+  }
+
+  /** 取得頁面 DOM 樹（精簡結構） */
+  async getDomTree(sessionId: string): Promise<any> {
+    const { page } = this.getSession(sessionId);
+
+    // 用 string evaluate 避免 esbuild __name 問題
+    return await page.evaluate(`(() => {
+      var SKIP_TAGS = ['SCRIPT','STYLE','SVG','NOSCRIPT','LINK','META','BR','HR'];
+      var MAX_CHILDREN = 20;
+      var MAX_DEPTH = 3;
+
+      function buildNode(el, depth) {
+        if (!el || !el.tagName) return null;
+        if (SKIP_TAGS.includes(el.tagName)) return null;
+        if (depth > MAX_DEPTH) return null;
+
+        var rect = el.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) return null;
+
+        var node = {
+          tag: el.tagName.toLowerCase(),
+          id: el.id || undefined,
+          class: el.className && typeof el.className === 'string' ? el.className.split(' ').filter(Boolean).slice(0,5).join(' ') : undefined,
+          text: (el.textContent || '').trim().slice(0, 50) || undefined,
+          attrs: {}
+        };
+
+        // 收集重要屬性
+        ['data-testid','aria-label','name','type','href','placeholder','role','value','for'].forEach(function(attr) {
+          var val = el.getAttribute(attr);
+          if (val) node.attrs[attr] = val.slice(0, 100);
+        });
+        if (Object.keys(node.attrs).length === 0) delete node.attrs;
+
+        // 產出穩定 selector
+        if (el.id) {
+          node.selector = '#' + CSS.escape(el.id);
+        } else if (el.getAttribute('data-testid')) {
+          node.selector = '[data-testid="' + el.getAttribute('data-testid') + '"]';
+        } else if (el.getAttribute('name')) {
+          node.selector = el.tagName.toLowerCase() + '[name="' + el.getAttribute('name') + '"]';
+        } else if (el.getAttribute('aria-label')) {
+          node.selector = '[aria-label="' + el.getAttribute('aria-label') + '"]';
+        }
+
+        // 子節點
+        if (depth < MAX_DEPTH && el.children.length > 0) {
+          var kids = [];
+          for (var i = 0; i < Math.min(el.children.length, MAX_CHILDREN); i++) {
+            var child = buildNode(el.children[i], depth + 1);
+            if (child) kids.push(child);
+          }
+          if (kids.length > 0) node.children = kids;
+        }
+
+        return node;
+      }
+
+      return buildNode(document.body, 0);
     })()`) as any;
   }
 
