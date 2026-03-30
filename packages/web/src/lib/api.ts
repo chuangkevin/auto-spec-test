@@ -5,9 +5,12 @@ async function request<T>(
   path: string,
   body?: unknown,
 ): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
+  const headers: Record<string, string> = {};
+
+  // 只在有 body 時設 content-type json
+  if (body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('token');
@@ -19,7 +22,7 @@ async function request<T>(
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
     headers,
-    body: body ? JSON.stringify(body) : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
   if (res.status === 401) {
