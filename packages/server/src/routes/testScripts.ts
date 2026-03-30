@@ -168,7 +168,8 @@ export default async function testScriptRoutes(fastify: FastifyInstance) {
       const db = getDb();
       const projectId = request.params.projectId;
       const id = request.params.id;
-      const { contentMd } = request.body as any;
+      const body = request.body as any;
+      const contentMd = body.contentMd || body.content_md;
 
       // Get current script to get specification_id
       const current = db
