@@ -1,4 +1,5 @@
 import { getGeminiApiKey, getGeminiApiKeyExcluding, getGeminiModel, trackUsage } from './geminiKeys.js';
+import { skillService } from './skillService.js';
 
 const MAX_RETRIES = 2;
 
@@ -258,9 +259,12 @@ ${domTreeFormatted}
 `;
 
     if (specContent) {
-      prompt += `## 額外上下文
+      // 檢查是否包含 skill 領域知識
+      const hasSkills = specContent.includes('=== 領域知識');
+      prompt += `## ${hasSkills ? '領域知識與額外上下文' : '額外上下文'}
 ${specContent.slice(0, 5000)}
 
+${hasSkills ? '**重要：上方「領域知識」中的業務規則必須反映在測試案例中。如果領域知識提到特定流程、驗證規則、或邊界條件，你必須為其產出對應的測試案例。**\n' : ''}
 `;
     }
 
@@ -409,6 +413,10 @@ ${behaviorsSummary}
       stepsContext = `\n## 步驟執行記錄\n${stepsText}\n`;
     }
 
+    // 注入 skill 領域知識供法官參考
+    const judgeSkills = skillService.formatForPrompt(3, 1000);
+    const skillContext = judgeSkills ? `\n## 領域知識（業務規則）\n${judgeSkills}\n\n**根據領域知識判斷：如果業務規則要求某功能存在但頁面缺少，應判定 FAIL。**` : '';
+
     const prompt = `你是一個資深前端測試工程師。請根據以下測試案例的**步驟執行記錄**和**最終頁面截圖**，綜合判斷測試是否通過。
 
 ## 頁面資訊
@@ -419,7 +427,8 @@ ${behaviorsSummary}
 - ID: ${testCase.id}
 - 名稱: ${testCase.name}
 - 預期結果: ${testCase.expectedResult}
-${stepsContext}
+${stepsContext}${skillContext}
+
 ## 判斷規則
 1. 如果有步驟執行失敗（selector 找不到、timeout），該步驟相關的預期結果無法驗證 → 判定 FAIL，並說明哪個步驟失敗
 2. 如果所有步驟都成功，觀察截圖判斷最終頁面狀態是否符合預期
@@ -474,7 +483,7 @@ ${stepsContext}
 - ID: ${testCase.id}
 - 名稱: ${testCase.name}
 - 預期結果: ${testCase.expectedResult}
-${stepsContext}
+${stepsContext}${(() => { const sk = skillService.formatForPrompt(3, 1000); return sk ? `\n## 領域知識\n${sk}\n` : ''; })()}
 ## 兩位裁判的判定
 裁判A（嚴格）判定：${judgeA.passed ? 'PASS' : 'FAIL'} — ${judgeA.actualResult}
 裁判B（寬鬆）判定：${judgeB.passed ? 'PASS' : 'FAIL'} — ${judgeB.actualResult}

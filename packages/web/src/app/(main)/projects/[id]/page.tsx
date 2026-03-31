@@ -679,6 +679,7 @@ function Tab1Content({
           </ul>
         )}
         {parseError && <p className="text-sm text-red-600">{parseError}</p>}
+        <ReuploadSection />
         <button
           type="button"
           onClick={handleParse}
@@ -701,6 +702,24 @@ function Tab1Content({
     );
   }
 
+  // 追加/替換規格書的摺疊區塊
+  const ReuploadSection = () => {
+    const [showUpload, setShowUpload] = useState(false);
+    return (
+      <div className="border-t border-gray-100 pt-3 mt-3">
+        <button type="button" onClick={() => setShowUpload(!showUpload)}
+          className="text-xs text-blue-600 hover:underline">
+          {showUpload ? '收合' : '重新上傳 / 追加規格書'}
+        </button>
+        {showUpload && (
+          <div className="mt-2">
+            <SpecUploader projectId={projectId} onUploadComplete={() => { setShowUpload(false); onRefresh(); }} />
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // Stage 3: Parsed, showing outline
   if (specStage === 'outline' && spec) {
     return (
@@ -721,6 +740,7 @@ function Tab1Content({
           onConfirmOutline={onConfirmOutline}
           confirming={generating}
         />
+        <ReuploadSection />
       </div>
     );
   }
@@ -728,11 +748,14 @@ function Tab1Content({
   // Stage 4: Script generated — use ScriptEditor for full editing
   if (specStage === 'done' && testScript) {
     return (
-      <ScriptEditor
-        projectId={projectId}
-        scriptId={testScript.id}
-        initialContent={testScript.content_md}
-      />
+      <div className="space-y-4">
+        <ScriptEditor
+          projectId={projectId}
+          scriptId={testScript.id}
+          initialContent={testScript.content_md}
+        />
+        <ReuploadSection />
+      </div>
     );
   }
 

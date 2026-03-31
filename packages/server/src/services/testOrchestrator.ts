@@ -90,9 +90,14 @@ export class TestOrchestrator {
     // 注入啟用中的 skill 領域知識
     const skillsBlock = skillService.formatForPrompt(5, 2000);
 
-    const context = `頁面：${pageInfo.title} (${pageInfo.url})
+    const pageContext = `頁面：${pageInfo.title} (${pageInfo.url})
 元件數：${elements.length}
-已探索行為：${behaviors.filter(b => b.type !== 'no_effect').map(b => `${b.type}: ${b.description}`).join(', ')}${skillsBlock ? `\n\n${skillsBlock}` : ''}`;
+已探索行為：${behaviors.filter(b => b.type !== 'no_effect').map(b => `${b.type}: ${b.description}`).join(', ')}`;
+
+    // 如果有 skill，在 prompt 中明確要求 Agent 根據領域知識分析
+    const skillInstruction = skillsBlock
+      ? `\n\n**重要：你擁有以下領域知識，請務必根據這些知識來分析測試重點。如果領域知識提到特定業務規則、流程、或注意事項，你必須在發言中提及。**\n\n${skillsBlock}`
+      : '';
 
     const messages: DiscussionMessage[] = [];
     const send = (msg: DiscussionMessage) => {
@@ -101,11 +106,11 @@ export class TestOrchestrator {
     };
 
     // Echo (QA 策略師) — 先發言
-    const echoPrompt = `你是 Echo，一位資深 QA 策略師。用口語化、有個性的方式分析這個網頁，說出你認為的測試重點。像是在跟同事開會討論一樣，不要太正式。2-4 句話。
+    const echoPrompt = `你是 Echo，一位資深 QA 策略師。用口語化、有個性的方式分析這個網頁，說出你認為的測試重點。像是在跟同事開會討論一樣，不要太正式。2-4 句話。${skillInstruction ? '\n\n你必須根據領域知識中的業務規則來規劃測試方向，不要只看截圖表面。' : ''}
 
-${context}
+${pageContext}${skillInstruction}
 
-只回傳 JSON: { "message": "你的發言（口語化）" }`;
+只回傳 JSON: { "message": "你的發言（口語化，如果有領域知識請務必引用）" }`;
     try {
       const res = cleanJson(await callGemini(echoPrompt, [screenshot]));
       send({ ...AI_AGENTS.echo, message: res.message });
@@ -114,11 +119,11 @@ ${context}
     // Lisa (前端專家) — 回應 Echo，補充技術觀點
     const lisaPrompt = `你是 Lisa，一位前端技術專家。你的同事 Echo 剛說了：「${messages[0]?.message || ''}」
 
-你要回應他，並從技術角度補充你的看法。像是在跟同事討論一樣，可以同意也可以提出不同意見。2-4 句話。
+你要回應他，並從技術角度補充你的看法。像是在跟同事討論一樣，可以同意也可以提出不同意見。2-4 句話。${skillInstruction ? '\n\n如果領域知識中有技術細節（如 API、資料流、元件行為），請引用並補充。' : ''}
 
-${context}
+${pageContext}${skillInstruction}
 
-只回傳 JSON: { "message": "你的回應（口語化）" }`;
+只回傳 JSON: { "message": "你的回應（口語化，引用領域知識中的技術細節）" }`;
     try {
       const res = cleanJson(await callGemini(lisaPrompt, [screenshot]));
       send({ ...AI_AGENTS.lisa, message: res.message });
@@ -129,11 +134,11 @@ ${context}
 - Echo: ${messages[0]?.message || ''}
 - Lisa: ${messages[1]?.message || ''}
 
-你要從使用者體驗的角度回應，可以贊同、反駁或提出新觀點。像是在跟同事討論一樣。2-4 句話。
+你要從使用者體驗的角度回應，可以贊同、反駁或提出新觀點。像是在跟同事討論一樣。2-4 句話。${skillInstruction ? '\n\n如果領域知識中有 UX 相關規則（如流程、提示、錯誤處理），請引用。' : ''}
 
-${context}
+${pageContext}${skillInstruction}
 
-只回傳 JSON: { "message": "你的回應（口語化）" }`;
+只回傳 JSON: { "message": "你的回應（口語化，引用領域知識中的 UX 要求）" }`;
     try {
       const res = cleanJson(await callGemini(bobPrompt, [screenshot]));
       send({ ...AI_AGENTS.bob, message: res.message });

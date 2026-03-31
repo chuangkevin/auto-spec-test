@@ -58,6 +58,7 @@ export default function SkillManager() {
   const [importing, setImporting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dirInputRef = useRef<HTMLInputElement>(null);
 
   // Edit state
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -85,7 +86,7 @@ export default function SkillManager() {
   // --- Toggle ---
   const handleToggle = async (id: string) => {
     try {
-      await api.patch(`/api/skills/${id}/toggle`);
+      await api.post(`/api/skills/${id}/toggle`);
       fetchSkills();
     } catch (err) {
       setError(err instanceof Error ? err.message : '操作失敗');
@@ -207,6 +208,10 @@ export default function SkillManager() {
           <button type="button" onClick={() => fileInputRef.current?.click()} className="text-orange-600 hover:underline">
             選擇檔案
           </button>
+          {' '}或{' '}
+          <button type="button" onClick={() => dirInputRef.current?.click()} className="text-orange-600 hover:underline">
+            選擇資料夾
+          </button>
         </p>
         <p className="text-xs text-gray-400 mt-1">格式：YAML frontmatter（name, description）+ Markdown content</p>
         <input
@@ -216,6 +221,18 @@ export default function SkillManager() {
           multiple
           className="hidden"
           onChange={(e) => e.target.files && handleFiles(e.target.files)}
+        />
+        {/* @ts-expect-error webkitdirectory is non-standard but widely supported */}
+        <input
+          ref={dirInputRef}
+          type="file"
+          webkitdirectory=""
+          className="hidden"
+          onChange={(e) => {
+            if (!e.target.files) return;
+            const mdFiles = Array.from(e.target.files).filter(f => f.name.endsWith('.md'));
+            if (mdFiles.length > 0) handleFiles(mdFiles);
+          }}
         />
       </div>
 

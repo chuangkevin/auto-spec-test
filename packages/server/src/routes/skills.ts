@@ -52,8 +52,8 @@ export default async function skillRoutes(fastify: FastifyInstance): Promise<voi
     return { ok: true };
   });
 
-  // PATCH /api/skills/:id/toggle — 啟用/停用
-  fastify.patch<{ Params: { id: string } }>('/api/skills/:id/toggle', async (request, reply) => {
+  // POST /api/skills/:id/toggle — 啟用/停用
+  fastify.post<{ Params: { id: string } }>('/api/skills/:id/toggle', async (request, reply) => {
     const skill = skillService.toggle(request.params.id);
     if (!skill) return reply.status(404).send({ error: 'Skill 不存在' });
     return skill;

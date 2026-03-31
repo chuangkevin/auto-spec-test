@@ -1,5 +1,6 @@
 import { browserService } from './browserService.js';
 import { getGeminiApiKey, getGeminiModel, trackUsage } from './geminiKeys.js';
+import { skillService } from './skillService.js';
 
 interface BehaviorResult {
   selector: string;
@@ -340,8 +341,12 @@ export class ExplorerService {
     const model = getGeminiModel();
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
+    // 注入 skill 領域知識幫助 AI 理解元素的業務意義
+    const skillsBlock = skillService.formatForPrompt(3, 1000);
+    const skillHint = skillsBlock ? `\n\n以下是此系統的領域知識，請據此判斷元素的業務意義：\n${skillsBlock}` : '';
+
     const prompt = `比較這兩張網頁截圖（點擊 <${element.tag}> "${element.text || element.name || ''}" 前後）。
-URL 沒變（${beforeUrl}）。
+URL 沒變（${beforeUrl}）。${skillHint}
 
 請判斷點擊後的行為類型，只回傳 JSON：
 { "type": "toggle|modal|dropdown|no_effect", "description": "簡短描述變化（15字內）" }
