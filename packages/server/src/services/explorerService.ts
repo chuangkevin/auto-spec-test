@@ -7,6 +7,21 @@ interface BehaviorResult {
   description: string;
 }
 
+/** 頁面地圖中的單一頁面 */
+export interface SiteMapPage {
+  url: string;
+  title: string;
+  /** 頁面類型 */
+  pageType: 'list' | 'detail' | 'form' | 'login' | 'settings' | 'dashboard' | 'other';
+  /** 從哪個頁面的哪個連結來的 */
+  fromUrl?: string;
+  fromLinkText?: string;
+  /** 該頁面的核心元件摘要 */
+  components: Array<{ tag: string; text: string; type?: string }>;
+  /** 探索深度 */
+  depth: number;
+}
+
 export class ExplorerService {
   /** 探索頁面中各元素的行為 */
   async explorePage(sessionId: string, broadcast?: (msg: any) => void): Promise<{
@@ -108,6 +123,201 @@ export class ExplorerService {
     } catch { /* ignore */ }
 
     return { behaviors };
+  }
+
+  /**
+   * 深度探索：跟隨導航連結，探索子頁面，建立整站頁面地圖
+   * - 最大深度 3 層
+   * - 最多 10 個頁面
+   * - 同 origin 才跟隨
+   */
+  async deepExplore(
+    sessionId: string,
+    startUrl: string,
+    broadcast?: (msg: any) => void
+  ): Promise<SiteMapPage[]> {
+    const siteMap: SiteMapPage[] = [];
+    const visitedUrls = new Set<string>();
+    const MAX_PAGES = 10;
+    const MAX_DEPTH = 3;
+
+    // 標準化 URL（去掉 hash、trailing slash）
+    const normalizeUrl = (u: string) => {
+      try {
+        const parsed = new URL(u);
+        parsed.hash = '';
+        return parsed.href.replace(/\/$/, '');
+      } catch { return u; }
+    };
+
+    const startOrigin = new URL(startUrl).origin;
+
+    // BFS 佇列
+    const queue: Array<{ url: string; depth: number; fromUrl?: string; fromLinkText?: string }> = [
+      { url: startUrl, depth: 0 },
+    ];
+
+    try {
+      if (broadcast) {
+        broadcast({ type: 'deep-explore-start', data: { maxPages: MAX_PAGES, maxDepth: MAX_DEPTH } });
+      }
+    } catch { /* ignore */ }
+
+    while (queue.length > 0 && siteMap.length < MAX_PAGES) {
+      const current = queue.shift()!;
+      const normalized = normalizeUrl(current.url);
+
+      if (visitedUrls.has(normalized)) continue;
+      visitedUrls.add(normalized);
+
+      // 廣播正在探索的頁面
+      try {
+        if (broadcast) {
+          broadcast({
+            type: 'deep-explore-page',
+            data: {
+              url: current.url,
+              depth: current.depth,
+              pageIndex: siteMap.length,
+              status: 'navigating',
+            },
+          });
+        }
+      } catch { /* ignore */ }
+
+      // 導航到目標頁面
+      try {
+        await browserService.navigateTo(sessionId, current.url);
+        await new Promise(r => setTimeout(r, 1500));
+      } catch (err) {
+        console.warn(`[deepExplore] 無法導航到 ${current.url}:`, err);
+        continue;
+      }
+
+      // 取得頁面資訊
+      let pageInfo: { url: string; title: string };
+      let elements: any[];
+      try {
+        pageInfo = await browserService.getPageInfo(sessionId);
+        elements = await browserService.getInteractiveElements(sessionId);
+      } catch {
+        continue;
+      }
+
+      // 判斷頁面類型（純 DOM 分析，不用 AI）
+      const pageType = this.classifyPage(pageInfo.url, pageInfo.title, elements);
+
+      // 提取核心元件摘要（前 10 個有意義的元件）
+      const components = elements
+        .filter(el => el.text || el.placeholder || el.name)
+        .slice(0, 10)
+        .map(el => ({
+          tag: el.tag,
+          text: String(el.text || el.placeholder || el.name || '').slice(0, 30),
+          type: el.type,
+        }));
+
+      const page: SiteMapPage = {
+        url: pageInfo.url,
+        title: pageInfo.title,
+        pageType,
+        fromUrl: current.fromUrl,
+        fromLinkText: current.fromLinkText,
+        components,
+        depth: current.depth,
+      };
+      siteMap.push(page);
+
+      // 廣播頁面探索完成
+      try {
+        if (broadcast) {
+          broadcast({
+            type: 'deep-explore-page',
+            data: {
+              url: pageInfo.url,
+              title: pageInfo.title,
+              depth: current.depth,
+              pageIndex: siteMap.length - 1,
+              pageType,
+              componentCount: components.length,
+              status: 'done',
+            },
+          });
+        }
+      } catch { /* ignore */ }
+
+      // 如果還沒到最大深度，收集子頁面連結加入佇列
+      if (current.depth < MAX_DEPTH && siteMap.length < MAX_PAGES) {
+        const navLinks = elements.filter(el => {
+          if (el.tag !== 'a') return false;
+          const href = el.href || '';
+          if (!href || href === '#' || href.startsWith('javascript:')) return false;
+          // 同 origin 才跟
+          try {
+            const linkOrigin = new URL(href, pageInfo.url).origin;
+            return linkOrigin === startOrigin;
+          } catch { return false; }
+        });
+
+        // 取前 5 個不重複的導航連結
+        const seen = new Set<string>();
+        for (const link of navLinks) {
+          if (seen.size >= 5) break;
+          try {
+            const fullUrl = new URL(link.href, pageInfo.url).href;
+            const norm = normalizeUrl(fullUrl);
+            if (visitedUrls.has(norm) || seen.has(norm)) continue;
+            seen.add(norm);
+            queue.push({
+              url: fullUrl,
+              depth: current.depth + 1,
+              fromUrl: pageInfo.url,
+              fromLinkText: String(link.text || '').slice(0, 30),
+            });
+          } catch { /* invalid URL */ }
+        }
+      }
+    }
+
+    // 探索完回到起始頁
+    try {
+      await browserService.navigateTo(sessionId, startUrl);
+      await new Promise(r => setTimeout(r, 1000));
+    } catch { /* ignore */ }
+
+    try {
+      if (broadcast) {
+        broadcast({ type: 'deep-explore-done', data: { totalPages: siteMap.length } });
+      }
+    } catch { /* ignore */ }
+
+    return siteMap;
+  }
+
+  /** 根據 URL、標題、元件來分類頁面類型 */
+  private classifyPage(
+    url: string,
+    title: string,
+    elements: any[]
+  ): SiteMapPage['pageType'] {
+    const lower = url.toLowerCase();
+    const titleLower = title.toLowerCase();
+
+    if (lower.includes('login') || lower.includes('signin') || lower.includes('auth')) return 'login';
+    if (lower.includes('setting') || lower.includes('config') || lower.includes('preference')) return 'settings';
+    if (lower.includes('dashboard') || lower.includes('admin')) return 'dashboard';
+
+    // 有表單元素多 → form
+    const inputs = elements.filter(el => el.tag === 'input' || el.tag === 'textarea' || el.tag === 'select');
+    if (inputs.length >= 3) return 'form';
+
+    // URL 有 id-like 路徑段 → detail
+    if (/\/\d+$/.test(url) || /\/[a-f0-9-]{36}$/.test(lower) || lower.includes('/detail')) return 'detail';
+
+    // 有分頁、多筆列表 → list
+    if (lower.includes('list') || lower.includes('/search') || lower.includes('?p=') || lower.includes('?page=')) return 'list';
+
+    return 'other';
   }
 
   /** 用 AI 分析前後截圖差異 */

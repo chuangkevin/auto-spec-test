@@ -231,6 +231,28 @@ export default function TestExecutionPanel({
               }
               break;
             }
+            case 'deep-explore-start': {
+              const d = msg.data as { maxPages: number };
+              setCurrentStep(`深度探索中（最多 ${d.maxPages} 頁）...`);
+              break;
+            }
+            case 'deep-explore-page': {
+              const d = msg.data as {
+                url: string; title?: string; depth: number;
+                pageIndex: number; pageType?: string; status: string;
+              };
+              if (d.status === 'navigating') {
+                setCurrentStep(`深度探索 ${d.pageIndex + 1}：正在前往 ${d.url.slice(0, 60)}...`);
+              } else if (d.status === 'done') {
+                setCurrentStep(`深度探索 ${d.pageIndex + 1}：[${d.pageType}] ${d.title || d.url.slice(0, 40)}`);
+              }
+              break;
+            }
+            case 'deep-explore-done': {
+              const d = msg.data as { totalPages: number };
+              setCurrentStep(`深度探索完成，共發現 ${d.totalPages} 個頁面`);
+              break;
+            }
             case 'need-manual-login': {
               const d = msg.data as { message: string };
               setCurrentStep(d.message);
@@ -393,6 +415,14 @@ export default function TestExecutionPanel({
       );
     } catch {
       // 探索失敗不阻斷流程
+    }
+
+    // 3.5 Deep explore — 跟隨連結探索子頁面（結果透過 WS 推送）
+    setCurrentStep('AI 正在深度探索子頁面...');
+    try {
+      await api.post(`/api/test-runner/${sid}/deep-explore`);
+    } catch {
+      // 深度探索失敗不阻斷流程
     }
 
     // 4. Multi-AI Discussion（逐筆透過 WS 'discussion' 事件推送）

@@ -320,7 +320,8 @@ class BrowserService {
           placeholder: el.getAttribute('placeholder') || undefined,
           selector: buildSelector(el),
           role: el.getAttribute('role') || undefined,
-          name: el.getAttribute('aria-label') || el.getAttribute('name') || undefined
+          name: el.getAttribute('aria-label') || el.getAttribute('name') || undefined,
+          href: (tag === 'a' && el.href) ? el.href : undefined
         });
       });
       return results;

@@ -30,6 +30,8 @@ interface RunnerState {
   stopped: boolean;
   /** 登入後保存的 session state（cookies + localStorage） */
   savedSessionState?: { cookies: any[]; localStorage: Record<string, string> };
+  /** 深度探索產出的頁面地圖 */
+  siteMap?: Array<{ url: string; title: string; pageType: string; components: any[]; depth: number; fromUrl?: string; fromLinkText?: string }>;
   /** WebSocket 訊息發送函式 */
   broadcast?: (msg: any) => void;
 }
@@ -212,6 +214,24 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
     }
   });
 
+  // POST /api/test-runner/:sessionId/deep-explore — 深度探索子頁面，建立整站地圖
+  fastify.post<{
+    Params: { sessionId: string };
+  }>('/api/test-runner/:sessionId/deep-explore', async (request, reply) => {
+    const { sessionId } = request.params;
+    const state = runnerStates.get(sessionId);
+    if (!state) return reply.status(404).send({ error: 'Session 不存在' });
+
+    try {
+      const siteMap = await explorerService.deepExplore(sessionId, state.url, state.broadcast);
+      state.siteMap = siteMap;
+      return { siteMap };
+    } catch (err: any) {
+      console.error(`[deep-explore] 錯誤:`, err);
+      return reply.status(500).send({ error: err.message });
+    }
+  });
+
   // POST /api/test-runner/:sessionId/discuss — 多 AI 討論測試策略
   fastify.post<{
     Params: { sessionId: string };
@@ -289,6 +309,20 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
       let enrichedSpec = state.specContent || '';
       if (state.discussion && state.discussion.length > 0) {
         enrichedSpec += '\n\n' + testOrchestrator.formatDiscussionForPrompt(state.discussion);
+      }
+
+      // 如果有深度探索的頁面地圖，注入上下文
+      if (state.siteMap && state.siteMap.length > 1) {
+        const mapSummary = state.siteMap.map((p, i) =>
+          `${i + 1}. [${p.pageType}] ${p.title} (${p.url})${p.fromLinkText ? ` ← 從「${p.fromLinkText}」進入` : ''}\n   元件: ${p.components.map(c => `<${c.tag}>${c.text}`).join(', ')}`
+        ).join('\n');
+        enrichedSpec += `\n\n## 整站頁面地圖（深度探索結果）
+以下是 AI 自動探索發現的 ${state.siteMap.length} 個頁面，請根據頁面地圖產出**跨頁面的使用者旅程測試**：
+
+${mapSummary}
+
+**重要：測試案例應包含跨頁面的流程（如：從列表頁點擊物件→驗證詳情頁內容→返回列表），而非只測試起始頁。每個已發現的重要頁面至少要有一個測試案例涵蓋。**
+`;
       }
 
       const scanResult = await pageScannerService.scanPage(
