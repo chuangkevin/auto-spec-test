@@ -318,11 +318,15 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
         enrichedSpec += '\n\n' + testOrchestrator.formatDiscussionForPrompt(state.discussion);
       }
 
-      // 注入啟用中的 AI Skills 領域知識
-      const skillsBlock = skillService.formatForPrompt(5, 2000);
-      if (skillsBlock) {
-        enrichedSpec += '\n\n' + skillsBlock;
-      }
+      // 用 AI 篩選跟目標頁面相關的 skill（輕量 call，只傳 name+description）
+      try {
+        const relevantSkills = await skillService.selectRelevant(pageInfo.url, pageInfo.title);
+        if (relevantSkills.length > 0) {
+          console.log(`[scan] 篩選出 ${relevantSkills.length} 個相關 skill: ${relevantSkills.map(s => s.name).join(', ')}`);
+          const skillsBlock = skillService.formatSkillsForPrompt(relevantSkills, 2000);
+          enrichedSpec += '\n\n' + skillsBlock;
+        }
+      } catch { /* skill 篩選失敗不阻斷 */ }
 
       // 如果有深度探索的頁面地圖，注入上下文
       if (state.siteMap && state.siteMap.length > 1) {

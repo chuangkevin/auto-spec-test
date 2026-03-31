@@ -1,5 +1,5 @@
 import { getGeminiApiKey, getGeminiApiKeyExcluding, getGeminiModel, trackUsage } from './geminiKeys.js';
-import { skillService } from './skillService.js';
+// skillService not imported here — skill injection happens in testRunner.ts scan flow
 
 const MAX_RETRIES = 2;
 
@@ -413,9 +413,8 @@ ${behaviorsSummary}
       stepsContext = `\n## 步驟執行記錄\n${stepsText}\n`;
     }
 
-    // 注入 skill 領域知識供法官參考
-    const judgeSkills = skillService.formatForPrompt(3, 1000);
-    const skillContext = judgeSkills ? `\n## 領域知識（業務規則）\n${judgeSkills}\n\n**根據領域知識判斷：如果業務規則要求某功能存在但頁面缺少，應判定 FAIL。**` : '';
+    // 法官不注入 skill — skill 已在測試生成階段影響案例設計，法官只需看步驟+截圖判斷
+    const skillContext = '';
 
     const prompt = `你是一個資深前端測試工程師。請根據以下測試案例的**步驟執行記錄**和**最終頁面截圖**，綜合判斷測試是否通過。
 
@@ -483,7 +482,7 @@ ${stepsContext}${skillContext}
 - ID: ${testCase.id}
 - 名稱: ${testCase.name}
 - 預期結果: ${testCase.expectedResult}
-${stepsContext}${(() => { const sk = skillService.formatForPrompt(3, 1000); return sk ? `\n## 領域知識\n${sk}\n` : ''; })()}
+${stepsContext}
 ## 兩位裁判的判定
 裁判A（嚴格）判定：${judgeA.passed ? 'PASS' : 'FAIL'} — ${judgeA.actualResult}
 裁判B（寬鬆）判定：${judgeB.passed ? 'PASS' : 'FAIL'} — ${judgeB.actualResult}

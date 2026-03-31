@@ -1,6 +1,6 @@
 import { browserService } from './browserService.js';
 import { getGeminiApiKey, getGeminiModel, trackUsage } from './geminiKeys.js';
-import { skillService } from './skillService.js';
+// skillService not needed in explorer — analyzeChange only classifies toggle/modal/nav
 
 interface BehaviorResult {
   selector: string;
@@ -341,9 +341,8 @@ export class ExplorerService {
     const model = getGeminiModel();
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-    // 注入 skill 領域知識幫助 AI 理解元素的業務意義
-    const skillsBlock = skillService.formatForPrompt(3, 1000);
-    const skillHint = skillsBlock ? `\n\n以下是此系統的領域知識，請據此判斷元素的業務意義：\n${skillsBlock}` : '';
+    // 探索階段不注入 skill（analyzeChange 只判斷 toggle/modal/nav，不需要業務知識）
+    const skillHint = '';
 
     const prompt = `比較這兩張網頁截圖（點擊 <${element.tag}> "${element.text || element.name || ''}" 前後）。
 URL 沒變（${beforeUrl}）。${skillHint}

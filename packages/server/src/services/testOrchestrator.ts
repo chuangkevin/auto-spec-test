@@ -87,8 +87,14 @@ export class TestOrchestrator {
     pageInfo: { url: string; title: string },
     broadcast?: (msg: any) => void
   ): Promise<DiscussionMessage[]> {
-    // 注入啟用中的 skill 領域知識
-    const skillsBlock = skillService.formatForPrompt(5, 2000);
+    // 用 AI 篩選相關 skill（輕量 call）
+    let skillsBlock = '';
+    try {
+      const relevantSkills = await skillService.selectRelevant(pageInfo.url, pageInfo.title);
+      if (relevantSkills.length > 0) {
+        skillsBlock = skillService.formatSkillsForPrompt(relevantSkills, 2000);
+      }
+    } catch { /* ignore */ }
 
     const pageContext = `頁面：${pageInfo.title} (${pageInfo.url})
 元件數：${elements.length}

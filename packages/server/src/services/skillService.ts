@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../db/connection.js';
+import { getGeminiApiKey, getGeminiModel, trackUsage } from './geminiKeys.js';
 
 export interface AgentSkill {
   id: string;
@@ -104,9 +105,63 @@ class SkillService {
     return { imported, updated };
   }
 
-  /** 格式化啟用的 skill 為 prompt 注入文字 */
-  formatForPrompt(maxSkills = 5, maxContentLength = 2000): string {
-    const skills = this.getActive().slice(0, maxSkills);
+  /**
+   * 用 AI 從啟用的 skill 中篩選出跟目標頁面相關的
+   * 輕量 call：只傳 name + description，不傳 content
+   */
+  async selectRelevant(pageUrl: string, pageTitle: string): Promise<AgentSkill[]> {
+    const active = this.getActive();
+    if (active.length === 0) return [];
+    if (active.length <= 3) return active; // 3 個以下全用
+
+    const apiKey = getGeminiApiKey();
+    if (!apiKey) return active.slice(0, 3); // 沒 key 就取前 3
+
+    const model = getGeminiModel();
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const skillList = active.map((s, i) => `${i + 1}. ${s.name}: ${s.description}`).join('\n');
+
+    const prompt = `你是一個 QA 測試專家。以下是一組領域知識（Skills），我要測試的頁面是：
+URL: ${pageUrl}
+標題: ${pageTitle}
+
+可用的 Skills：
+${skillList}
+
+請選出與這個頁面**最相關**的 Skills（最多 3 個）。只回傳相關 skill 的編號，用逗號分隔。
+例如：1,3,5
+
+如果都不相關，回傳 "none"。`;
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0, maxOutputTokens: 50 },
+        }),
+      });
+      const json = await res.json();
+
+      if (json.usageMetadata) {
+        trackUsage(apiKey, model, 'skill_select', json.usageMetadata);
+      }
+
+      const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+      if (text === 'none' || !text) return [];
+
+      const indices = text.split(',').map((s: string) => parseInt(s.trim()) - 1).filter((i: number) => i >= 0 && i < active.length);
+      return indices.map((i: number) => active[i]);
+    } catch (err) {
+      console.warn('[skillService] selectRelevant 失敗，fallback 取前 3:', err);
+      return active.slice(0, 3);
+    }
+  }
+
+  /** 格式化指定的 skill 為 prompt 注入文字 */
+  formatSkillsForPrompt(skills: AgentSkill[], maxContentLength = 2000): string {
     if (skills.length === 0) return '';
 
     const blocks = skills.map(s => {
@@ -117,6 +172,12 @@ class SkillService {
     });
 
     return `=== 領域知識（AI Skills） ===\n\n${blocks.join('\n\n')}\n\n===========================`;
+  }
+
+  /** 格式化啟用的 skill 為 prompt 注入文字（舊方法，保留相容） */
+  formatForPrompt(maxSkills = 5, maxContentLength = 2000): string {
+    const skills = this.getActive().slice(0, maxSkills);
+    return this.formatSkillsForPrompt(skills, maxContentLength);
   }
 }
 
