@@ -286,7 +286,6 @@ ${skillBlock.slice(0, 4000)}
 `;
       }
     }
-    }
 
     if (behaviors && behaviors.length > 0) {
       const behaviorsSummary = behaviors
