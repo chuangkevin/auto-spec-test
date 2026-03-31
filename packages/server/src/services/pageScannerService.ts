@@ -233,13 +233,21 @@ ${domTreeFormatted}
     prompt += `## Selector 規則（嚴格遵守）
 
 ### 優先順序（必須按此順序選擇）
-1. **text=XXX** — 用元素的可見文字內容定位（最穩定），例如 text=登入、text=送出
-2. **role=XXX[name=YYY]** — 用 ARIA role 定位，例如 role=button[name=登入]
-3. **#id** — 用元素 id 定位
-4. **[data-testid=XXX]** — 用 data-testid 屬性定位
-5. **[aria-label=XXX]** 或 **[name=XXX]** 或 **[placeholder=XXX]** — 用語意屬性定位
+1. **#id** — 用元素 id 定位（最穩定），例如 #search-input、#login-btn
+2. **[data-testid="XXX"]** — 用 data-testid 屬性定位
+3. **[placeholder="XXX"]** — 用 placeholder 屬性定位輸入框，例如 [placeholder="搜尋社區, 路段, 關鍵字"]
+4. **[aria-label="XXX"]** 或 **[name="XXX"]** — 用語意屬性定位
+5. **role=XXX[name="YYY"]** — 用 ARIA role 定位，例如 role=button[name="登入"]
+6. **text="XXX"** — 用元素的**精確**可見文字定位（注意：加引號代表精確匹配）
+
+### text selector 注意事項
+- **必須用精確匹配**：寫 text="店面" 而非 text=店面（無引號會模糊匹配到「店面實價」等）
+- **text 容易匹配到隱藏元素**（如下拉選單中的連結），優先用其他 selector
+- 如果 text 會匹配多個元素，改用 #id、[data-testid]、或 [aria-label] 等更精確的 selector
+- 對於導航列的 tab/連結，優先用上方元件列表中的 selector 而非 text
 
 ### 絕對禁止
+- **禁止** placeholder=XXX（錯誤語法！正確寫法是 [placeholder="XXX"]，帶方括號和引號）
 - **禁止** nth-of-type、nth-child 等位置型 selector
 - **禁止** div > div > button 等依賴 DOM 層級的 selector
 - **禁止** tag.class 組合（如 button.btn-primary）
@@ -283,6 +291,12 @@ ${behaviorsSummary}
 - "驗證標題文字" — 沒有業務意義
 - "驗證輸入框存在" — 元件存在性不需要測試
 - 任何只有一個 assert 步驟的測試
+
+### 常見功能的測試策略
+- **分頁**：用 navigate 直接改 URL 參數（如 ?p=2）來測試，不需要找分頁按鈕的 selector
+- **篩選器/下拉選單**：如果元件列表中有對應的 select/dropdown，用 click + 等待展開 + click 選項。如果找不到穩定 selector，用 navigate 改 URL 參數
+- **搜尋框**：用 [placeholder="XXX"] 或 [name="XXX"] 定位，不要用 placeholder=XXX（語法錯誤）
+- **卡片/列表項連結**：如果能在元件列表中找到 <a> 連結的 href，直接用 navigate 去該 URL 測試詳情頁
 
 ### 覆蓋率要求
 - 如果上方有「AI 團隊討論紀錄」和「必須覆蓋的測試重點」，你 **必須** 為每個討論重點產出至少一個對應的測試案例，不能遺漏

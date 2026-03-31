@@ -175,6 +175,10 @@ export class ReportService {
         const end = new Date(r.completed_at).getTime();
         const diffSec = ((end - start) / 1000).toFixed(1);
         lines.push(`- 執行時間：${diffSec} 秒`);
+        // 標記可疑的快速 PASS
+        if (r.status === 'passed' && parseFloat(diffSec) < 2.0) {
+          lines.push(`- ⚠️ **注意：執行時間過短，可能未充分驗證**`);
+        }
       }
 
       if (r.status === 'failed') {

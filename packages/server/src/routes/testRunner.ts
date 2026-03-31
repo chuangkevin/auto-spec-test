@@ -298,6 +298,12 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
       state.status = 'scanning';
       broadcastStatus(state);
 
+      // 確保回到起始頁面（深度探索後可能在別的頁面）
+      try {
+        await browserService.navigateTo(sessionId, state.url);
+        await new Promise(r => setTimeout(r, 1000));
+      } catch { /* ignore */ }
+
       // 先滾動頁面觸發懶載入，再回到頂部截圖
       await browserService.scrollAndCollectElements(sessionId);
       const screenshot = await browserService.fullPageScreenshot(sessionId);
@@ -346,6 +352,7 @@ ${mapSummary}
 
       return { components: scanResult.components, testPlan: scanResult.testPlan };
     } catch (err: any) {
+      console.error(`[scan] 錯誤:`, err);
       state.status = 'ready';
       broadcastStatus(state);
       return reply.status(500).send({ error: err.message });
@@ -847,6 +854,9 @@ async function executeTests(
       continue;
     }
 
+    // 記錄開始時間
+    const caseStartTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
+
     // 廣播步驟開始
     if (state.broadcast) {
       state.broadcast({
@@ -1046,10 +1056,11 @@ async function executeTests(
         failedCount++;
       }
 
-      // 寫入 DB
+      // 寫入 DB（使用真實的開始/結束時間）
+      const caseEndTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
       db.prepare(
         `INSERT INTO test_case_results (test_run_id, case_id, name, status, steps, expected_result, actual_result, screenshot, error, started_at, completed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         testRunId,
         tc.id,
@@ -1059,7 +1070,9 @@ async function executeTests(
         tc.expectedResult,
         finalActualResult,
         result.screenshot || null,
-        stepErrors.length > 0 ? stepErrors.join('; ') : (result.error || null)
+        stepErrors.length > 0 ? stepErrors.join('; ') : (result.error || null),
+        caseStartTime,
+        caseEndTime
       );
 
       // 廣播結果
@@ -1082,10 +1095,11 @@ async function executeTests(
           data: { testCaseId: tc.id, passed: false, actualResult: `執行錯誤: ${err.message}` },
         });
       }
+      const caseEndTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
       db.prepare(
         `INSERT INTO test_case_results (test_run_id, case_id, name, status, steps, expected_result, error, started_at, completed_at)
-         VALUES (?, ?, ?, 'failed', ?, ?, ?, datetime('now'), datetime('now'))`
-      ).run(testRunId, tc.id, tc.name, JSON.stringify(tc.steps), tc.expectedResult, err.message);
+         VALUES (?, ?, ?, 'failed', ?, ?, ?, ?, ?)`
+      ).run(testRunId, tc.id, tc.name, JSON.stringify(tc.steps), tc.expectedResult, err.message, caseStartTime, caseEndTime);
     }
   }
 
@@ -1107,8 +1121,38 @@ async function executeTests(
   broadcastStatus(state);
 }
 
+/** 修正常見的 selector 錯誤 */
+function fixSelector(selector: string): string {
+  let s = selector.trim();
+
+  // 修正 placeholder=XXX → [placeholder="XXX"]
+  if (/^placeholder=/.test(s)) {
+    const val = s.replace(/^placeholder=/, '');
+    s = `[placeholder="${val}"]`;
+  }
+
+  // 修正 text=XXX（無引號）→ text="XXX"（精確匹配），避免模糊匹配到隱藏元素
+  // 但保留已有引號的 text="XXX"
+  if (/^text=[^"]/.test(s)) {
+    const val = s.replace(/^text=/, '');
+    s = `text="${val}"`;
+  }
+
+  // 對 text= selector 加上 :visible 修飾，只匹配可見元素
+  if (s.startsWith('text=') || s.startsWith('text="')) {
+    s = s + ' >> visible=true';
+  }
+
+  return s;
+}
+
 /** 執行單一步驟（回傳錯誤訊息，null 表示成功） */
 async function executeStep(sessionId: string, step: any): Promise<string | null> {
+  // 自動修正 selector
+  if (step.target) {
+    step.target = fixSelector(step.target);
+  }
+
   try {
   switch (step.action) {
     case 'click':

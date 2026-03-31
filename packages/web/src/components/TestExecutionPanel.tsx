@@ -1124,7 +1124,7 @@ export default function TestExecutionPanel({
 
           {/* Test task list */}
           <div className="rounded-lg border border-gray-200 bg-white">
-            <div className="border-b border-gray-100 px-4 py-2.5">
+            <div className="border-b border-gray-100 px-4 py-2.5 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
                 <Play size={14} className="text-green-500" />
                 測試任務清單
@@ -1134,6 +1134,27 @@ export default function TestExecutionPanel({
                   </span>
                 )}
               </h3>
+              {status === 'ready' && testCases.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleStartTest}
+                  disabled={testCases.filter((tc) => tc.selected).length === 0}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                >
+                  <Play size={14} />
+                  開始測試
+                </button>
+              )}
+              {status === 'running' && (
+                <div className="flex items-center gap-1.5">
+                  <button type="button" onClick={handlePause} className="inline-flex items-center gap-1 rounded-md bg-yellow-500 px-2 py-1 text-xs font-medium text-white hover:bg-yellow-600"><Pause size={12} />暫停</button>
+                  <button type="button" onClick={handleSkip} className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"><SkipForward size={12} />跳過</button>
+                  <button type="button" onClick={handleStop} className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"><Square size={12} />停止</button>
+                </div>
+              )}
+              {status === 'paused' && (
+                <button type="button" onClick={handleResume} className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700"><Play size={12} />繼續</button>
+              )}
             </div>
             <div className="max-h-[420px] overflow-y-auto px-4 py-2">
               <TestTaskList
