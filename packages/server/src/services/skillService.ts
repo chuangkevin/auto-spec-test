@@ -156,11 +156,13 @@ ${skillList}
       const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
       console.log(`[skillService] AI 回傳: "${text}"`);
       if (text === 'none' || !text) {
-        // Fallback: 用 URL path + 標題關鍵字匹配，按匹配分數排序
+        // Fallback: 用 URL host/path + 標題關鍵字匹配，按匹配分數排序
         const urlPath = new URL(pageUrl).pathname.toLowerCase();
-        const urlHost = new URL(pageUrl).hostname.toLowerCase();
+        const hostParts = new URL(pageUrl).hostname.toLowerCase().split('.').filter(p => p.length > 2 && !['www', 'com', 'org', 'net'].includes(p));
+        const pathParts = urlPath.split('/').filter(Boolean);
         const titleWords = pageTitle.toLowerCase().split(/[\s|｜\-–—，,]+/).filter(k => k.length > 1);
-        const allKeywords = [urlHost, ...urlPath.split('/').filter(Boolean), ...titleWords];
+        const allKeywords = [...hostParts, ...pathParts, ...titleWords];
+        console.log(`[skillService] fallback keywords: ${allKeywords.join(', ')}`);
 
         const scored = active.map(s => {
           const hay = `${s.name} ${s.description} ${s.content.slice(0, 500)}`.toLowerCase();
