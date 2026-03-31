@@ -32,3 +32,14 @@ actualResult SHALL 包含具體的觀察描述，不使用模糊語句。
 #### Scenario: 具體的 FAIL 描述
 - **WHEN** 法官判定 FAIL
 - **THEN** actualResult SHALL 描述具體差異（如「預期跳轉至 /dashboard，實際停留在 /login，頁面顯示錯誤訊息 '帳號不存在'」）
+
+### Requirement: 執行時間追蹤與可疑結果標記
+系統 SHALL 記錄每個測試案例的真實執行時間，並標記可疑的快速 PASS。
+
+#### Scenario: 真實執行時間
+- **WHEN** 測試案例開始和結束
+- **THEN** SHALL 記錄真實的 started_at 和 completed_at 時間戳，而非全部用 datetime('now')
+
+#### Scenario: 可疑的快速 PASS
+- **WHEN** 測試案例判定為 PASS 但執行時間低於 2 秒
+- **THEN** 報告中 SHALL 標記「⚠️ 執行時間過短，可能未充分驗證」

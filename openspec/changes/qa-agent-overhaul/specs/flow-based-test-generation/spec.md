@@ -23,19 +23,46 @@
 - **THEN** 產出 8-10 個測試案例，涵蓋核心功能的 happy path 和 edge case
 
 ### Requirement: 語意型 selector 策略
-系統 SHALL 使用穩定的語意型 selector，禁止位置型 selector。
+系統 SHALL 使用穩定的語意型 selector，禁止位置型和混合型 selector。
 
 #### Scenario: selector 優先順序
 - **WHEN** AI 為測試步驟選擇 selector
-- **THEN** SHALL 按以下優先順序使用：(1) text=XXX (2) role=XXX[name=YYY] (3) #id (4) [data-testid] (5) [aria-label]
+- **THEN** SHALL 按以下優先順序使用：(1) #id (2) [data-testid="XXX"] (3) [placeholder="XXX"] (4) [aria-label="XXX"] (5) role=XXX[name="YYY"] (6) text="XXX"（精確匹配，帶引號）
 
 #### Scenario: 禁止位置型 selector
 - **WHEN** AI 產出測試步驟
 - **THEN** SHALL NOT 使用 `nth-of-type`、`nth-child`、`div > div > button` 等位置型 selector
 
+#### Scenario: 禁止混合型 selector
+- **WHEN** AI 產出測試步驟
+- **THEN** SHALL NOT 使用 `button text="XXX"` 或 `a text="XXX"` 等 tag+text 混合格式（Playwright 不支援）。正確寫法為 `text="XXX"` 或使用元件列表中的 selector
+
+#### Scenario: 禁止裸 placeholder selector
+- **WHEN** AI 需要定位輸入框
+- **THEN** SHALL 使用 `[placeholder="XXX"]`（帶方括號和引號），SHALL NOT 使用 `placeholder=XXX`（語法錯誤）
+
+#### Scenario: text selector 歧義處理
+- **WHEN** `text="XXX"` 可能匹配到隱藏元素（如下拉選單內的連結）
+- **THEN** 系統 SHALL 自動加上 `>> visible=true` 修飾符，只匹配可見元素
+
+#### Scenario: Selector 自動修正
+- **WHEN** AI 產出了格式錯誤的 selector（如 `placeholder=XXX`、`a text="XXX"`）
+- **THEN** executeStep SHALL 自動修正為合法格式再執行，不直接報錯
+
 #### Scenario: 無可用 selector 則跳過
 - **WHEN** 某功能在 DOM 中找不到穩定的語意型 selector
-- **THEN** SHALL 不產出該測試步驟，而非使用脆弱的位置型 selector
+- **THEN** SHALL 不產出該測試步驟，而非使用脆弱的 selector
+
+### Requirement: 分頁與篩選器測試策略
+系統 SHALL 教導 AI 使用 URL 參數方式測試分頁和篩選功能，不依賴脆弱的 DOM selector。
+
+#### Scenario: 分頁測試用 URL 參數
+- **WHEN** 頁面有分頁功能（URL 含 ?p= 或 ?page= 參數）
+- **THEN** 測試案例 SHALL 使用 navigate 動作直接改 URL 參數（如 ?p=2）來測試分頁，不依賴分頁按鈕的 selector
+
+#### Scenario: 篩選器無穩定 selector 時用 URL
+- **WHEN** 篩選器元件找不到穩定的語意 selector
+- **THEN** 測試案例 SHALL 使用 navigate 動作改 URL 參數來測試篩選功能
 
 ### Requirement: 討論結果影響測試生成
 AI 討論 Agent（Echo/Lisa/Bob）的建議 SHALL 被格式化為結構化上下文，注入 scanPage prompt，直接影響測試案例的生成方向。
