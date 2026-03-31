@@ -8,6 +8,7 @@ import { pageScannerService } from '../services/pageScannerService.js';
 import { reportService } from '../services/reportService.js';
 import { selfQuestionService } from '../services/selfQuestionService.js';
 import { testOrchestrator } from '../services/testOrchestrator.js';
+import { skillService } from '../services/skillService.js';
 
 /** 每個 session 的執行狀態 */
 interface RunnerState {
@@ -315,6 +316,12 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
       let enrichedSpec = state.specContent || '';
       if (state.discussion && state.discussion.length > 0) {
         enrichedSpec += '\n\n' + testOrchestrator.formatDiscussionForPrompt(state.discussion);
+      }
+
+      // 注入啟用中的 AI Skills 領域知識
+      const skillsBlock = skillService.formatForPrompt(5, 2000);
+      if (skillsBlock) {
+        enrichedSpec += '\n\n' + skillsBlock;
       }
 
       // 如果有深度探索的頁面地圖，注入上下文

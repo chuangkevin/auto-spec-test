@@ -11,6 +11,7 @@
  */
 
 import { getGeminiApiKey, getGeminiModel, trackUsage } from './geminiKeys.js';
+import { skillService } from './skillService.js';
 
 interface DiscussionMessage {
   role: string;
@@ -86,9 +87,12 @@ export class TestOrchestrator {
     pageInfo: { url: string; title: string },
     broadcast?: (msg: any) => void
   ): Promise<DiscussionMessage[]> {
+    // 注入啟用中的 skill 領域知識
+    const skillsBlock = skillService.formatForPrompt(5, 2000);
+
     const context = `頁面：${pageInfo.title} (${pageInfo.url})
 元件數：${elements.length}
-已探索行為：${behaviors.filter(b => b.type !== 'no_effect').map(b => `${b.type}: ${b.description}`).join(', ')}`;
+已探索行為：${behaviors.filter(b => b.type !== 'no_effect').map(b => `${b.type}: ${b.description}`).join(', ')}${skillsBlock ? `\n\n${skillsBlock}` : ''}`;
 
     const messages: DiscussionMessage[] = [];
     const send = (msg: DiscussionMessage) => {

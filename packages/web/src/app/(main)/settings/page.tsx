@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Key, Plus, Trash2, Shield, Loader2, AlertTriangle, GitBranch, ExternalLink, Check, Unlink, MessageSquare, Send } from 'lucide-react';
 import { api } from '@/lib/api';
+import SkillManager from '@/components/SkillManager';
 
 // --- 型別定義 ---
 
@@ -771,6 +772,7 @@ export default function SettingsPage() {
       <ImportSection onImported={fetchData} />
       <KeyListSection keys={keys} loading={loading} onDeleted={fetchData} />
       <UsageSection usage={usage} />
+      <SkillManager />
       <GiteaSection />
       <SlackSection />
     </div>

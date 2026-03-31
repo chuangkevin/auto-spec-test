@@ -23,6 +23,7 @@ import settingsRoutes from './routes/settings.js';
 import giteaRoutes from './routes/gitea.js';
 import testRunnerRoutes from './routes/testRunner.js';
 import wsRoutes from './routes/ws.js';
+import skillRoutes from './routes/skills.js';
 import { browserService } from './services/browserService.js';
 
 // 2. 建立 Fastify 實例
@@ -62,6 +63,7 @@ async function start(): Promise<void> {
   await app.register(giteaRoutes);
   await app.register(testRunnerRoutes);
   await app.register(wsRoutes);
+  await app.register(skillRoutes);
 
   // 8. Health check
   app.get('/api/health', async () => {
