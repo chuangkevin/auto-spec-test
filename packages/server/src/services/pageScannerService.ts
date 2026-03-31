@@ -247,6 +247,7 @@ ${domTreeFormatted}
 - 對於導航列的 tab/連結，優先用上方元件列表中的 selector 而非 text
 
 ### 絕對禁止
+- **禁止** button text="XXX" 或 a text="XXX"（這不是合法 selector！用 text="XXX" 或 #id 就好，不要加 tag 前綴）
 - **禁止** placeholder=XXX（錯誤語法！正確寫法是 [placeholder="XXX"]，帶方括號和引號）
 - **禁止** nth-of-type、nth-child 等位置型 selector
 - **禁止** div > div > button 等依賴 DOM 層級的 selector

@@ -1125,20 +1125,28 @@ async function executeTests(
 function fixSelector(selector: string): string {
   let s = selector.trim();
 
+  // 修正 "button text=XXX" / "a text=XXX" → tag:has-text("XXX") 格式
+  // AI 常把 tag 和 text selector 混在一起寫
+  const tagTextMatch = s.match(/^(a|button|div|span|li|label|input|select)\s+text=["']?(.+?)["']?$/);
+  if (tagTextMatch) {
+    const [, tag, textVal] = tagTextMatch;
+    s = `${tag}:has-text("${textVal}") >> visible=true`;
+    return s;
+  }
+
   // 修正 placeholder=XXX → [placeholder="XXX"]
   if (/^placeholder=/.test(s)) {
     const val = s.replace(/^placeholder=/, '');
     s = `[placeholder="${val}"]`;
   }
 
-  // 修正 text=XXX（無引號）→ text="XXX"（精確匹配），避免模糊匹配到隱藏元素
-  // 但保留已有引號的 text="XXX"
+  // 修正 text=XXX（無引號）→ text="XXX"（精確匹配）
   if (/^text=[^"]/.test(s)) {
     const val = s.replace(/^text=/, '');
     s = `text="${val}"`;
   }
 
-  // 對 text= selector 加上 :visible 修飾，只匹配可見元素
+  // 對 text= selector 加上 visible 修飾，只匹配可見元素
   if (s.startsWith('text=') || s.startsWith('text="')) {
     s = s + ' >> visible=true';
   }
