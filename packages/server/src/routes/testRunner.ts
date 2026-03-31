@@ -344,6 +344,8 @@ ${mapSummary}
 `;
       }
 
+      console.log(`[scan] enrichedSpec length: ${enrichedSpec.length}, specContent: ${(state.specContent || '').length}, has discussion: ${!!(state.discussion?.length)}, has siteMap: ${!!(state.siteMap?.length)}`);
+
       const scanResult = await pageScannerService.scanPage(
         screenshot,
         elements,

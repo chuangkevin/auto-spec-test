@@ -259,13 +259,33 @@ ${domTreeFormatted}
 `;
 
     if (specContent) {
-      // 檢查是否包含 skill 領域知識
-      const hasSkills = specContent.includes('=== 領域知識');
-      prompt += `## ${hasSkills ? '領域知識與額外上下文' : '額外上下文'}
-${specContent.slice(0, 5000)}
+      // 分離規格書內容和 skill 領域知識
+      const skillSeparator = '=== 領域知識（AI Skills） ===';
+      const skillIdx = specContent.indexOf(skillSeparator);
+      const pureSpec = skillIdx >= 0 ? specContent.slice(0, skillIdx).trim() : specContent;
+      const skillBlock = skillIdx >= 0 ? specContent.slice(skillIdx) : '';
 
-${hasSkills ? '**重要：上方「領域知識」中的業務規則必須反映在測試案例中。如果領域知識提到特定流程、驗證規則、或邊界條件，你必須為其產出對應的測試案例。**\n' : ''}
+      if (pureSpec) {
+        prompt += `## ⚠️ 產品規格書（最高優先級 — 必須嚴格遵守）
+
+以下是此產品的正式規格書。**你的測試案例必須嚴格依照規格書描述的功能、URL 格式、篩選邏輯、業務規則來設計。**
+- 如果規格書描述了 URL 參數規則，你 **必須** 使用規格書中的 URL 格式，**禁止** 自己編造 URL 參數
+- 如果規格書描述了篩選條件的行為（如「清空條件保留現況」），測試的預期結果 **必須** 符合規格書
+- 如果規格書描述了某功能的邊界情況，**必須** 為其設計測試案例
+
+${pureSpec.slice(0, 8000)}
+
 `;
+      }
+      if (skillBlock) {
+        prompt += `## 領域知識（AI Skills）
+${skillBlock.slice(0, 4000)}
+
+**根據領域知識中的業務規則產出對應的測試案例。**
+
+`;
+      }
+    }
     }
 
     if (behaviors && behaviors.length > 0) {
