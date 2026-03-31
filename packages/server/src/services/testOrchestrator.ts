@@ -91,10 +91,13 @@ export class TestOrchestrator {
     let skillsBlock = '';
     try {
       const relevantSkills = await skillService.selectRelevant(pageInfo.url, pageInfo.title);
+      console.log(`[discuss] skill 篩選結果: ${relevantSkills.length} 個 — ${relevantSkills.map(s => s.name).join(', ') || '無'}`);
       if (relevantSkills.length > 0) {
         skillsBlock = skillService.formatSkillsForPrompt(relevantSkills, 2000);
       }
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.error('[discuss] skill 篩選失敗:', err);
+    }
 
     const pageContext = `頁面：${pageInfo.title} (${pageInfo.url})
 元件數：${elements.length}

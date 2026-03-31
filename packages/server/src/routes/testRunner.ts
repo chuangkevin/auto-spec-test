@@ -326,7 +326,9 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
           const skillsBlock = skillService.formatSkillsForPrompt(relevantSkills, 2000);
           enrichedSpec += '\n\n' + skillsBlock;
         }
-      } catch { /* skill 篩選失敗不阻斷 */ }
+      } catch (err) {
+        console.error('[scan] skill 篩選失敗:', err);
+      }
 
       // 如果有深度探索的頁面地圖，注入上下文
       if (state.siteMap && state.siteMap.length > 1) {
