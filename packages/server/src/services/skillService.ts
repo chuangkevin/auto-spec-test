@@ -214,17 +214,25 @@ ${skillList}
     const model = getGeminiModel();
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-    const prompt = `你是一個 QA 知識萃取專家。以下是一個產品的規格書大綱。
+    const prompt = `你是一個 QA 自動化測試知識萃取專家。以下是一個產品的規格書大綱。
 請從中提取 3-5 個最重要的業務規則，每個規則包含：
 1. name: kebab-case 識別名（如 url-format-rules）
 2. description: 一行描述（50 字內）
 3. content: 精煉的規則內容（200-500 字），包含具體的格式、參數、邏輯
 
-提取重點：
-- URL 結構和參數格式（這對自動化測試最重要）
-- 篩選/搜尋條件的交互邏輯
+## 最重要：URL 格式必須有完整範例
+
+第一個 skill **必須**是 URL 格式規則，且 content 中**必須包含**：
+- 完整的 URL path 結構範例（如 /list/21_usage/5-10-8-12_zip/?p=1）
+- 每個參數在 URL 中的位置（是在 path 裡還是 query string 裡）
+- 分頁參數的格式（如 ?p=2）
+- 排序參數的格式
+- 至少 3 個不同場景的完整 URL 範例
+
+## 其他提取重點
+- 篩選/搜尋條件的交互邏輯（切換時哪些保留、哪些清空）
 - 頁面狀態切換的行為規則
-- 資料顯示/排序的業務邏輯
+- SEO 規則（title 動態生成、noindex 條件）
 - 邊界條件和特殊情況
 
 規格書大綱：
@@ -238,7 +246,7 @@ ${specContent}
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
+          generationConfig: { temperature: 0.2, maxOutputTokens: 16384 },
         }),
       });
       const json = await res.json();
@@ -255,7 +263,10 @@ ${specContent}
       let parsed;
       try {
         parsed = JSON.parse(cleaned);
-      } catch {
+      } catch (parseErr) {
+        console.warn(`[skillService] JSON parse 失敗, text length=${cleaned.length}, last100=${cleaned.slice(-100)}`);
+        console.warn(`[skillService] finishReason=${json.candidates?.[0]?.finishReason}`);
+
         // 嘗試修復截斷的 JSON
         let fixed = cleaned;
         const lastBrace = fixed.lastIndexOf('}');
