@@ -223,9 +223,11 @@ export default function SkillManager() {
           onChange={(e) => e.target.files && handleFiles(e.target.files)}
         />
         <input
-          ref={dirInputRef}
+          ref={(el) => {
+            (dirInputRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
+            if (el) el.setAttribute('webkitdirectory', '');
+          }}
           type="file"
-          webkitdirectory=""
           className="hidden"
           onChange={(e) => {
             if (!e.target.files) return;
