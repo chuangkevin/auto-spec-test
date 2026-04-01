@@ -1,0 +1,1 @@
+ALTER TABLE agent_skills ADD COLUMN verified INTEGER DEFAULT 0;

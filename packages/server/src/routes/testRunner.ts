@@ -365,6 +365,24 @@ ${mapSummary}
 
       state.scanResult = scanResult;
 
+      // 測試計畫版控：存版本記錄
+      if (state.projectId) {
+        try {
+          const db = getDb();
+          const maxVersion = (db.prepare(
+            'SELECT MAX(version) as v FROM test_plan_versions WHERE project_id = ?'
+          ).get(state.projectId) as any)?.v || 0;
+          db.prepare(
+            `INSERT INTO test_plan_versions (project_id, session_id, version, test_plan, components, url)
+             VALUES (?, ?, ?, ?, ?, ?)`
+          ).run(
+            state.projectId, sessionId, maxVersion + 1,
+            JSON.stringify(scanResult.testPlan), JSON.stringify(scanResult.components), state.url
+          );
+          console.log(`[scan] 測試計畫版本 v${maxVersion + 1} 已儲存`);
+        } catch (err) { console.error('[scan] 版控儲存失敗:', err); }
+      }
+
       // 掃描完成時保存登入狀態（cookies + localStorage）
       try {
         state.savedSessionState = await browserService.saveSessionState(sessionId);
@@ -821,6 +839,33 @@ ${mapSummary}
       })),
     });
   });
+
+  // GET /api/projects/:projectId/test-plans — 測試計畫版本歷史
+  fastify.get<{
+    Params: { projectId: string };
+  }>('/api/projects/:projectId/test-plans', async (request) => {
+    const db = getDb();
+    const versions = db.prepare(
+      `SELECT id, version, url, created_at,
+              json_array_length(test_plan) as case_count
+       FROM test_plan_versions
+       WHERE project_id = ?
+       ORDER BY version DESC`
+    ).all(Number(request.params.projectId));
+    return versions;
+  });
+
+  // GET /api/projects/:projectId/test-plans/:version — 取得特定版本
+  fastify.get<{
+    Params: { projectId: string; version: string };
+  }>('/api/projects/:projectId/test-plans/:version', async (request, reply) => {
+    const db = getDb();
+    const plan = db.prepare(
+      'SELECT * FROM test_plan_versions WHERE project_id = ? AND version = ?'
+    ).get(Number(request.params.projectId), Number(request.params.version));
+    if (!plan) return reply.status(404).send({ error: '版本不存在' });
+    return plan;
+  });
 }
 
 /** 廣播狀態變更到 WebSocket */
@@ -1138,6 +1183,17 @@ async function executeTests(
     reportService.saveReport(testRunId, report);
   } catch (err) {
     console.error(`[testRunner] 產出報告失敗:`, err);
+  }
+
+  // autoDream: 測試完成後學習
+  if (failedCount > 0 && state.projectId) {
+    const allResults = db.prepare(
+      'SELECT case_id as caseId, name, status, actual_result as actualResult, error FROM test_case_results WHERE test_run_id = ?'
+    ).all(testRunId) as any[];
+    skillService.dream(state.projectId, allResults.map((r: any) => ({
+      caseId: r.caseId, name: r.name, passed: r.status === 'passed',
+      actualResult: r.actualResult || '', error: r.error || undefined,
+    }))).catch(err => console.error('[testRunner] dream 失敗:', err));
   }
 
   state.status = 'done';

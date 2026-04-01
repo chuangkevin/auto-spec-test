@@ -30,6 +30,7 @@ import OutlinePreview from '@/components/OutlinePreview';
 import ScriptEditor from '@/components/ScriptEditor';
 import TestExecutionPanel from '@/components/TestExecutionPanel';
 import ProjectSkillsPanel from '@/components/ProjectSkillsPanel';
+import TestPlanHistory from '@/components/TestPlanHistory';
 
 const STATUS_LABELS: Record<Project['status'], string> = {
   draft: '草稿',
@@ -594,6 +595,10 @@ export default function ProjectDetailPage() {
             onConfirmOutline={handleConfirmOutline}
             onRefresh={fetchProject}
           />
+        )}
+
+        {activeTab === 'testing' && (
+          <TestPlanHistory projectId={projectId} />
         )}
 
         {activeTab === 'testing' && (

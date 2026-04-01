@@ -17,6 +17,7 @@ interface ProjectSkill {
   description: string;
   content: string;
   project_id: number;
+  verified?: number;
   created_at: string;
   updated_at: string;
 }
@@ -127,7 +128,14 @@ export default function ProjectSkillsPanel({ projectId }: { projectId: number })
                     <ChevronRight size={16} className="text-gray-400 shrink-0" />
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gray-800">{skill.name}</div>
+                    <div className="flex items-center gap-2 text-sm font-medium text-gray-800">
+                      {skill.name}
+                      {skill.verified === 1 ? (
+                        <span className="text-xs text-green-600">✓ 已驗證</span>
+                      ) : (
+                        <span className="text-xs text-amber-500">⚠ 待驗證</span>
+                      )}
+                    </div>
                     {skill.description && (
                       <div className="text-xs text-gray-500 truncate">{skill.description}</div>
                     )}

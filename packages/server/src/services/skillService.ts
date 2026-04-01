@@ -10,6 +10,7 @@ export interface AgentSkill {
   enabled: number;
   order_index: number;
   project_id?: number;
+  verified?: number;
   created_at: string;
   updated_at: string;
 }
@@ -175,9 +176,12 @@ ${skillList}
     if (skills.length === 0) return '';
 
     const blocks = skills.map(s => {
-      const content = s.content.length > maxContentLength
+      let content = s.content.length > maxContentLength
         ? s.content.slice(0, maxContentLength) + '\n...（已截斷）'
         : s.content;
+      if (!s.verified) {
+        content += '\n（⚠ 此規則未在規格書中完全驗證，僅供參考）';
+      }
       return `### ${s.name}\n${s.description ? `_${s.description}_\n` : ''}${content}`;
     });
 
@@ -292,6 +296,28 @@ ${specContent}
         created.push(this.getById(id)!);
       }
 
+      // Strict Write Discipline: 驗證 key facts
+      for (const skill of created) {
+        let isVerified = false;
+        // 提取 content 中的 URL pattern（如 /list/, _usage/, _zip/, ?p=）
+        const urlPatterns = skill.content.match(/\/[a-z_]+\/|_usage|_zip|_mrt|\?p=|\?sort=|\?kw=/g) || [];
+        // 在規格書原文中搜尋
+        if (urlPatterns.length > 0) {
+          const found = urlPatterns.filter(p => specContent.includes(p));
+          isVerified = found.length >= urlPatterns.length * 0.5; // 50% 以上找到就算 verified
+        } else {
+          // 沒有 URL pattern，搜尋其他 key terms
+          const keyTerms = skill.content.match(/「[^」]+」/g) || [];
+          const found = keyTerms.filter(t => specContent.includes(t.replace(/[「」]/g, '')));
+          isVerified = keyTerms.length === 0 || found.length >= keyTerms.length * 0.3;
+        }
+        if (isVerified) {
+          db.prepare('UPDATE agent_skills SET verified = 1 WHERE id = ?').run(skill.id);
+          skill.verified = 1;
+        }
+      }
+      console.log(`[skillService] 驗證結果: ${created.filter(s => s.verified).length}/${created.length} verified`);
+
       console.log(`[skillService] generateFromSpec: 為 project ${projectId} 生成 ${created.length} 個 skill`);
       return created;
     } catch (err) {
@@ -304,6 +330,80 @@ ${specContent}
   formatProjectSkillsForPrompt(projectId: number, maxContentLength = 2000): string {
     const skills = this.getProjectSkills(projectId);
     return this.formatSkillsForPrompt(skills, maxContentLength);
+  }
+
+  async dream(projectId: number, testResults: Array<{ caseId: string; name: string; passed: boolean; actualResult: string; error?: string }>): Promise<void> {
+    const failed = testResults.filter(r => !r.passed);
+    if (failed.length === 0) return;
+
+    const projectSkills = this.getProjectSkills(projectId);
+    if (projectSkills.length === 0) return;
+
+    const apiKey = getGeminiApiKey();
+    if (!apiKey) return;
+
+    const model = getGeminiModel();
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const failedSummary = failed.map(r =>
+      `${r.caseId} ${r.name}: ${(r.actualResult || '').slice(0, 200)}${r.error ? ` [Error: ${r.error.slice(0, 100)}]` : ''}`
+    ).join('\n');
+
+    const skillNames = projectSkills.map(s => s.name).join(', ');
+
+    const prompt = `你是一個 QA 學習助手。以下測試案例失敗了，請分析原因並建議更新哪個 skill。
+
+失敗的測試案例：
+${failedSummary}
+
+可用的 Project Skills: ${skillNames}
+
+請對每個失敗案例分類：
+- selector_issue: selector 找不到或 timeout → 建議修正
+- url_format_issue: URL 格式錯誤 → 建議正確格式
+- spec_mismatch: 預期結果與實際不符 → 可能是測試預期錯誤
+- real_bug: 真正的頁面 bug → 不需要修改 skill
+
+只回傳 JSON:
+{ "learnings": [{ "caseId": "TC-001", "category": "selector_issue|url_format_issue|spec_mismatch|real_bug", "skillToUpdate": "skill-name-or-null", "suggestion": "建議內容（50字內）" }] }`;
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 2048 },
+        }),
+      });
+      const json = await res.json();
+      if (json.usageMetadata) trackUsage(apiKey, model, 'dream', json.usageMetadata);
+
+      const text: string = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      let cleaned = text.trim();
+      if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+
+      const parsed = JSON.parse(cleaned);
+      const learnings = parsed.learnings || [];
+
+      // 自動 append 學習到的資訊到 skill
+      const db = getDb();
+      for (const learning of learnings) {
+        if (!learning.skillToUpdate) continue;
+        if (learning.category === 'real_bug') continue; // 真 bug 不動 skill
+
+        const skill = projectSkills.find(s => s.name === learning.skillToUpdate);
+        if (!skill) continue;
+
+        const appendText = `\n\n---\n**[自動學習 ${new Date().toISOString().slice(0, 10)}]** ${learning.category}: ${learning.suggestion}`;
+        db.prepare('UPDATE agent_skills SET content = content || ?, updated_at = datetime(\'now\') WHERE id = ?')
+          .run(appendText, skill.id);
+      }
+
+      console.log(`[dream] project ${projectId}: ${learnings.length} learnings, ${learnings.filter((l: any) => l.category !== 'real_bug').length} skill updates`);
+    } catch (err) {
+      console.error('[dream] 失敗:', err);
+    }
   }
 }
 
