@@ -659,6 +659,24 @@ function Tab1Content({
     }
   };
 
+  // 追加/替換規格書的摺疊區塊（必須在所有 stage return 之前定義）
+  const ReuploadSection = () => {
+    const [showUpload, setShowUpload] = useState(false);
+    return (
+      <div className="border-t border-gray-100 pt-3 mt-3">
+        <button type="button" onClick={() => setShowUpload(!showUpload)}
+          className="text-xs text-blue-600 hover:underline">
+          {showUpload ? '收合' : '重新上傳 / 追加規格書'}
+        </button>
+        {showUpload && (
+          <div className="mt-2">
+            <SpecUploader projectId={projectId} onUploadComplete={() => { setShowUpload(false); onRefresh(); }} />
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // Stage 1: No specification yet
   if (specStage === 'upload') {
     return (
@@ -707,24 +725,6 @@ function Tab1Content({
       </div>
     );
   }
-
-  // 追加/替換規格書的摺疊區塊
-  const ReuploadSection = () => {
-    const [showUpload, setShowUpload] = useState(false);
-    return (
-      <div className="border-t border-gray-100 pt-3 mt-3">
-        <button type="button" onClick={() => setShowUpload(!showUpload)}
-          className="text-xs text-blue-600 hover:underline">
-          {showUpload ? '收合' : '重新上傳 / 追加規格書'}
-        </button>
-        {showUpload && (
-          <div className="mt-2">
-            <SpecUploader projectId={projectId} onUploadComplete={() => { setShowUpload(false); onRefresh(); }} />
-          </div>
-        )}
-      </div>
-    );
-  };
 
   // Stage 3: Parsed, showing outline
   if (specStage === 'outline' && spec) {
