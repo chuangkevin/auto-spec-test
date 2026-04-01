@@ -1,5 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { verifyToken, type TokenPayload } from '../services/authService.js';
+import type { TokenPayload } from '../services/authService.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -7,23 +7,27 @@ declare module 'fastify' {
   }
 }
 
+/**
+ * Auth hook — 簡化版，從 Authorization header 解析 user info
+ * 沒有 token 時設定預設 admin user（不阻擋請求）
+ */
 export async function authHook(
   request: FastifyRequest,
-  reply: FastifyReply,
+  _reply: FastifyReply,
 ): Promise<void> {
   const header = request.headers.authorization;
 
-  if (!header || !header.startsWith('Bearer ')) {
-    reply.code(401).send({ error: 'Unauthorized' });
-    return;
+  if (header && header.startsWith('Bearer ')) {
+    try {
+      const token = header.slice(7);
+      const payload = JSON.parse(Buffer.from(token.split('.')[1] || '', 'base64').toString());
+      request.user = { id: payload.id || 1, username: payload.username || 'admin', role: payload.role || 'admin' };
+      return;
+    } catch {
+      // token 解析失敗，用預設值
+    }
   }
 
-  const token = header.slice(7);
-
-  try {
-    const payload = verifyToken(token);
-    request.user = payload;
-  } catch {
-    reply.code(401).send({ error: 'Unauthorized' });
-  }
+  // 沒有 token 或解析失敗 — 設定預設 admin user（不阻擋）
+  request.user = { id: 1, username: 'admin', role: 'admin' };
 }

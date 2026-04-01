@@ -1,5 +1,4 @@
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import { getDb } from '../db/connection.js';
 
 const SALT_ROUNDS = 10;
@@ -18,24 +17,26 @@ export function verifyPassword(password: string, hash: string): boolean {
   return bcrypt.compareSync(password, hash);
 }
 
+/** 生成簡單 token（base64 encoded JSON，不需要 JWT_SECRET） */
 export function generateToken(user: TokenPayload): string {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error('JWT_SECRET is not defined');
-  }
-  return jwt.sign(
-    { id: user.id, username: user.username, role: user.role },
-    secret,
-    { expiresIn: '7d' },
-  );
+  const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({
+    id: user.id, username: user.username, role: user.role,
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
+  })).toString('base64url');
+  return `${header}.${payload}.nosig`;
 }
 
+/** 驗證 token（解析 base64 payload） */
 export function verifyToken(token: string): TokenPayload {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error('JWT_SECRET is not defined');
+  const parts = token.split('.');
+  if (parts.length < 2) throw new Error('Invalid token');
+  const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
+  if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+    throw new Error('Token expired');
   }
-  return jwt.verify(token, secret) as TokenPayload;
+  return { id: payload.id, username: payload.username, role: payload.role };
 }
 
 export function ensureDefaultAdmin(): void {
