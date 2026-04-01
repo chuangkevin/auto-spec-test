@@ -23,7 +23,7 @@ interface RunnerState {
     type: string;
     description: string;
   }>;
-  discussion?: Array<{ role: string; message: string }>;
+  discussion?: Array<{ role: string; name: string; avatar: string; message: string }>;
   testRunId?: number;
   currentCaseIndex: number;
   paused: boolean;

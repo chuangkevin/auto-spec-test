@@ -123,20 +123,19 @@ class SkillService {
 
     const skillList = active.map((s, i) => `${i + 1}. ${s.name}: ${s.description}`).join('\n');
 
-    const prompt = `你是一個 QA 測試專家。以下是一組**產品內部領域知識**（Skills），這些 Skills 描述的都是同一個產品/公司的不同面向。
+    const prompt = `你是一個前端 QA 測試專家。我要對以下頁面做 UI/UX 測試：
 
-我要測試的頁面：
 URL: ${pageUrl}
 標題: ${pageTitle}
 
-可用的 Skills（都是這個產品的內部知識）：
+以下是可用的領域知識（Skills）。注意：有些是前端/C端使用者體驗知識，有些是後端/管理後台知識。
+**只選對前端 UI 測試直接有用的**（如：C端頁面行為、搜尋篩選邏輯、前端架構、UX 設計規範）。
+**不要選後端排程 Job、資料庫同步、API 內部實作、管理後台功能**。
+
 ${skillList}
 
-請選出與這個頁面**最可能相關**的 Skills（最多 5 個）。
-- URL 的 domain 和 skill 描述的系統很可能是同一個產品的不同模組
-- 寧可多選也不要漏掉，因為相關的知識對測試品質很重要
-- 只回傳編號，用逗號分隔，例如：1,3,5
-- 只有完全確定都不相關時才回傳 "none"`;
+回傳相關 skill 的編號（逗號分隔），例如：1,3,5
+如果沒有跟前端 UI 測試相關的，回傳 "none"`;
 
     try {
       const res = await fetch(url, {
@@ -156,36 +155,13 @@ ${skillList}
       const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
       console.log(`[skillService] AI 回傳: "${text}"`);
       if (text === 'none' || !text) {
-        // Fallback: 用 URL host/path + 標題關鍵字匹配，按匹配分數排序
-        const urlPath = new URL(pageUrl).pathname.toLowerCase();
-        const hostParts = new URL(pageUrl).hostname.toLowerCase().split('.').filter(p => p.length > 2 && !['www', 'com', 'org', 'net'].includes(p));
-        const pathParts = urlPath.split('/').filter(Boolean);
-        const titleWords = pageTitle.toLowerCase().split(/[\s|｜\-–—，,]+/).filter(k => k.length > 1);
-        const allKeywords = [...hostParts, ...pathParts, ...titleWords];
-        console.log(`[skillService] fallback keywords: ${allKeywords.join(', ')}`);
-
-        const scored = active.map(s => {
-          const hay = `${s.name} ${s.description} ${s.content.slice(0, 500)}`.toLowerCase();
-          let score = 0;
-          for (const kw of allKeywords) {
-            if (hay.includes(kw)) score += kw.length; // 長關鍵字權重更高
-          }
-          return { skill: s, score };
-        }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
-
-        if (scored.length > 0) {
-          const top = scored.slice(0, 5).map(x => x.skill);
-          console.log(`[skillService] AI 回傳空，keyword fallback 選中: ${top.map(s => s.name).join(', ')}`);
-          return top;
-        }
-        // 最終 fallback
-        console.log(`[skillService] keyword 也沒匹配，fallback 取前 3`);
-        return active.slice(0, 3);
+        console.log(`[skillService] AI 判斷無相關 skill，不注入`);
+        return [];
       }
 
-      const indices = text.split(',').map((s: string) => parseInt(s.trim()) - 1).filter((i: number) => i >= 0 && i < active.length);
-      const selected = indices.map((i: number) => active[i]);
-      console.log(`[skillService] 選中: ${selected.map(s => s.name).join(', ')}`);
+      const indices = text.split(',').map((s: string) => parseInt(s.trim()) - 1).filter((i: number) => !isNaN(i) && i >= 0 && i < active.length);
+      const selected: AgentSkill[] = indices.map((i: number) => active[i]);
+      console.log(`[skillService] 選中: ${selected.map((s: AgentSkill) => s.name).join(', ')}`);
       return selected;
     } catch (err) {
       console.error('[skillService] selectRelevant 失敗，fallback 取前 3:', err);

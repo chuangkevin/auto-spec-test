@@ -13,7 +13,7 @@
 import { getGeminiApiKey, getGeminiModel, trackUsage } from './geminiKeys.js';
 import { skillService } from './skillService.js';
 
-interface DiscussionMessage {
+export interface DiscussionMessage {
   role: string;
   name: string;
   avatar: string;
