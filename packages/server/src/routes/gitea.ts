@@ -54,10 +54,11 @@ export default async function giteaRoutes(fastify: FastifyInstance): Promise<voi
       const db = getDb();
       db.prepare('DELETE FROM gitea_connections').run();
 
+      const currentUserId = (request as any).user?.id || 1;
       db.prepare(
         `INSERT INTO gitea_connections (user_id, gitea_url, access_token, gitea_username)
-         VALUES (0, ?, ?, ?)`,
-      ).run(giteaUrl.replace(/\/+$/, ''), token, user.login);
+         VALUES (?, ?, ?, ?)`,
+      ).run(currentUserId, giteaUrl.replace(/\/+$/, ''), token, user.login);
 
       return {
         success: true,
