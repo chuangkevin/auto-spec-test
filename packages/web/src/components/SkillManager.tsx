@@ -222,7 +222,6 @@ export default function SkillManager() {
           className="hidden"
           onChange={(e) => e.target.files && handleFiles(e.target.files)}
         />
-        {/* @ts-expect-error webkitdirectory is non-standard but widely supported */}
         <input
           ref={dirInputRef}
           type="file"
