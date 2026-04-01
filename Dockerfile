@@ -45,6 +45,10 @@ COPY --from=builder /app/packages/server/package.json packages/server/
 COPY --from=builder /app/node_modules node_modules
 COPY --from=builder /app/packages/server/node_modules packages/server/node_modules
 
+# ── Install nginx for reverse proxy ──
+RUN apt-get update && apt-get install -y nginx && rm -rf /var/lib/apt/lists/*
+COPY nginx.conf /etc/nginx/nginx.conf
+
 # ── Entrypoint ──
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
@@ -53,6 +57,7 @@ ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3001
 
+# nginx listens on 3000 (public), proxies to Next.js 3002 and Fastify 3001
 EXPOSE 3000 3001
 
 CMD ["./docker-entrypoint.sh"]
