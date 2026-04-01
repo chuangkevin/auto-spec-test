@@ -1,4 +1,5 @@
-export const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
+// production: 空字串（同 origin，透過 Ingress 轉發）; dev: localhost:4001
+export const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4001';
 
 async function request<T>(
   method: string,

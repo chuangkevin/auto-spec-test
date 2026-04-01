@@ -69,7 +69,14 @@ export interface TestExecutionPanelProps {
 /* -------- Helpers -------- */
 
 function wsBaseUrl(): string {
-  // Derive WS URL from BASE_URL
+  // 空 BASE_URL = 同 origin（production with Ingress）
+  if (!BASE_URL) {
+    if (typeof window !== 'undefined') {
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${proto}//${window.location.host}`;
+    }
+    return '';
+  }
   try {
     const u = new URL(BASE_URL);
     const proto = u.protocol === 'https:' ? 'wss:' : 'ws:';

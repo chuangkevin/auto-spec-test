@@ -16,7 +16,8 @@ COPY packages/server packages/server
 COPY packages/web packages/web
 
 # Build-time env: frontend API URL baked into Next.js bundle
-ARG NEXT_PUBLIC_API_URL=http://srvhpgit1:32301
+# 空字串 = 同 origin（透過 Ingress 轉發 /api/* 到後端）
+ARG NEXT_PUBLIC_API_URL=
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 # Build server (TypeScript → dist + migrations)
