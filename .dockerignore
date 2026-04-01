@@ -1,0 +1,17 @@
+node_modules
+.next
+dist
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.local
+packages/server/data
+packages/server/uploads
+test-results
+e2e
+openspec
+.git
+.github
+.claude
+*.md
