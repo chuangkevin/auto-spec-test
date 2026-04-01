@@ -26,12 +26,10 @@ RUN pnpm --filter server build
 RUN pnpm --filter web build
 
 # ── Stage 2: Production ────────────────────────────────────
-FROM node:22-slim
+# 用 Playwright 官方 image — 已內建 Chromium + 所有系統依賴，不需要 apt-get
+FROM mcr.microsoft.com/playwright:v1.52.0-noble
 
 WORKDIR /app
-
-# Install Playwright Chromium + system dependencies
-RUN npx playwright install --with-deps chromium && rm -rf /tmp/*
 
 # ── Copy Next.js standalone output ──
 # standalone includes its own pruned node_modules
