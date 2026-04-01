@@ -7,6 +7,10 @@ let keyIndex = 0;
 let lastLoadTime = 0;
 const CACHE_TTL = 60_000; // reload from DB every 60s
 
+/** 追蹤每把 key 的 429 cooldown（key → cooldown 結束時間） */
+const keyCooldowns = new Map<string, number>();
+const COOLDOWN_MS = 60_000; // 429 後冷卻 60 秒
+
 /** Check if a key looks like a real API key (not a placeholder) */
 export function isValidKeyFormat(key: string): boolean {
   // Gemini keys start with "AIza" and are 39 chars
@@ -67,18 +71,35 @@ export function invalidateKeyCache(): void {
   cachedKeys = [];
 }
 
-/** Get a random API key (avoids front-loading hot keys) */
-export function getGeminiApiKey(): string | null {
-  const keys = loadKeys();
-  if (keys.length === 0) return null;
-  return keys[Math.floor(Math.random() * keys.length)];
+/** 取得可用的 key（跳過在 cooldown 中的） */
+function getAvailableKeys(): string[] {
+  const now = Date.now();
+  return loadKeys().filter(k => {
+    const cooldownEnd = keyCooldowns.get(k);
+    return !cooldownEnd || now >= cooldownEnd;
+  });
 }
 
-/** Mark a key as failed (429) — skip it for this rotation cycle */
+/** 取得 API key — 隨機選但跳過 cooldown 中的 key */
+export function getGeminiApiKey(): string | null {
+  let available = getAvailableKeys();
+  if (available.length === 0) {
+    // 全部在 cooldown，清除最舊的強制使用
+    console.warn(`[geminiKeys] 所有 ${loadKeys().length} 把 key 都在 cooldown，清除最舊的`);
+    keyCooldowns.clear();
+    available = loadKeys();
+  }
+  if (available.length === 0) return null;
+  return available[Math.floor(Math.random() * available.length)];
+}
+
+/** 標記 key 為 429 進入 cooldown，回傳另一把可用的 */
 export function getGeminiApiKeyExcluding(failedKey: string): string | null {
-  const keys = loadKeys().filter(k => k !== failedKey);
-  if (keys.length === 0) return null;
-  return keys[Math.floor(Math.random() * keys.length)];
+  keyCooldowns.set(failedKey, Date.now() + COOLDOWN_MS);
+  const avail = getAvailableKeys();
+  console.warn(`[geminiKeys] key ...${failedKey.slice(-4)} cooldown ${COOLDOWN_MS / 1000}s, 可用: ${avail.length}/${loadKeys().length}`);
+  if (avail.length === 0) return null;
+  return avail[Math.floor(Math.random() * avail.length)];
 }
 
 /** Get configured model name */
