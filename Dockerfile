@@ -1,7 +1,6 @@
 # ── Stage 1: Build ──────────────────────────────────────────
-FROM node:22-slim AS builder
-
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+FROM node:22 AS builder
+# node:22 (non-slim) 已內建 python3, make, g++，不需要 apt-get
 
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@latest --activate
