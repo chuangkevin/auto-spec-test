@@ -3,9 +3,10 @@ set -e
 
 echo "Starting auto-spec-test..."
 
-# Start nginx (port 3000 — reverse proxy)
-nginx &
-echo "Nginx PID: $! (port 3000)"
+# Start nginx (port 3000 — reverse proxy, foreground 不 fork)
+nginx -g 'daemon off;' &
+NGINX_PID=$!
+echo "Nginx PID: $NGINX_PID (port 3000)"
 
 # Start Fastify backend (port 3001)
 node packages/server/dist/index.js &
@@ -21,6 +22,5 @@ echo "Frontend PID: $FRONTEND_PID (port 3002)"
 wait -n
 EXIT_CODE=$?
 echo "A process exited with code $EXIT_CODE, shutting down..."
-kill $BACKEND_PID $FRONTEND_PID 2>/dev/null || true
-nginx -s stop 2>/dev/null || true
+kill $NGINX_PID $BACKEND_PID $FRONTEND_PID 2>/dev/null || true
 exit $EXIT_CODE
