@@ -39,8 +39,10 @@ COPY --from=builder /app/packages/web/public packages/web/public
 
 # ── Copy Fastify server ──
 COPY --from=builder /app/packages/server/dist packages/server/dist
-COPY --from=builder /app/packages/server/node_modules packages/server/node_modules
 COPY --from=builder /app/packages/server/package.json packages/server/
+# pnpm hoists deps to root node_modules — copy both
+COPY --from=builder /app/node_modules node_modules
+COPY --from=builder /app/packages/server/node_modules packages/server/node_modules
 
 # ── Entrypoint ──
 COPY docker-entrypoint.sh ./
