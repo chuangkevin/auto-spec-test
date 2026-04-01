@@ -21,7 +21,6 @@ jobs:
         run: |
           echo "Building image with tag: $IMAGE_TAG and latest"
           docker build \
-            --build-arg NEXT_PUBLIC_API_URL=http://srvhpgit1:32301 \
             -t srvhpgit1:32050/auto-spec-test:$IMAGE_TAG \
             -t srvhpgit1:32050/auto-spec-test:latest .
 
