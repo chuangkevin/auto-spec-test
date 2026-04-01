@@ -1,12 +1,19 @@
 import type { FastifyInstance } from 'fastify';
 import { authHook } from '../middleware/auth.js';
 import { skillService } from '../services/skillService.js';
+import { getDb } from '../db/connection.js';
 
 export default async function skillRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook('preHandler', authHook);
 
-  // GET /api/skills — 列出所有 skill
-  fastify.get('/api/skills', async () => {
+  // GET /api/skills — 列出所有 skill（可選 ?project_id=N 篩選）
+  fastify.get<{
+    Querystring: { project_id?: string };
+  }>('/api/skills', async (request) => {
+    const projectId = (request.query as any).project_id;
+    if (projectId) {
+      return skillService.getProjectSkills(Number(projectId));
+    }
     return skillService.getAll();
   });
 
@@ -69,5 +76,25 @@ export default async function skillRoutes(fastify: FastifyInstance): Promise<voi
     }
     const result = skillService.batchImport(skills);
     return result;
+  });
+
+  // POST /api/projects/:projectId/skills/regenerate — 從規格書重新生成 project skill
+  fastify.post<{
+    Params: { projectId: string };
+  }>('/api/projects/:projectId/skills/regenerate', async (request, reply) => {
+    const projectId = Number(request.params.projectId);
+    const db = getDb();
+
+    // 取得最新規格書的 parsed_outline_md
+    const spec = db
+      .prepare('SELECT parsed_outline_md FROM specifications WHERE project_id = ? ORDER BY version DESC LIMIT 1')
+      .get(projectId) as { parsed_outline_md: string | null } | undefined;
+
+    if (!spec || !spec.parsed_outline_md) {
+      return reply.status(400).send({ error: '此專案尚無已解析的規格書' });
+    }
+
+    const skills = await skillService.generateFromSpec(projectId, spec.parsed_outline_md);
+    return { skills, count: skills.length };
   });
 }

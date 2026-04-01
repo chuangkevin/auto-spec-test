@@ -85,18 +85,29 @@ export class TestOrchestrator {
     elements: any[],
     behaviors: any[],
     pageInfo: { url: string; title: string },
-    broadcast?: (msg: any) => void
+    broadcast?: (msg: any) => void,
+    projectId?: number
   ): Promise<DiscussionMessage[]> {
-    // 用 AI 篩選相關 skill（輕量 call）
+    // 優先用 project skill
     let skillsBlock = '';
-    try {
-      const relevantSkills = await skillService.selectRelevant(pageInfo.url, pageInfo.title);
-      console.log(`[discuss] skill 篩選結果: ${relevantSkills.length} 個 — ${relevantSkills.map(s => s.name).join(', ') || '無'}`);
-      if (relevantSkills.length > 0) {
-        skillsBlock = skillService.formatSkillsForPrompt(relevantSkills, 2000);
+    if (projectId) {
+      const projectSkills = skillService.getProjectSkills(projectId);
+      if (projectSkills.length > 0) {
+        console.log(`[discuss] 使用 ${projectSkills.length} 個 project skill`);
+        skillsBlock = skillService.formatSkillsForPrompt(projectSkills, 2000);
       }
-    } catch (err) {
-      console.error('[discuss] skill 篩選失敗:', err);
+    }
+    if (!skillsBlock) {
+      // fallback to selectRelevant
+      try {
+        const relevantSkills = await skillService.selectRelevant(pageInfo.url, pageInfo.title);
+        console.log(`[discuss] skill 篩選結果: ${relevantSkills.length} 個 — ${relevantSkills.map(s => s.name).join(', ') || '無'}`);
+        if (relevantSkills.length > 0) {
+          skillsBlock = skillService.formatSkillsForPrompt(relevantSkills, 2000);
+        }
+      } catch (err) {
+        console.error('[discuss] skill 篩選失敗:', err);
+      }
     }
 
     const pageContext = `頁面：${pageInfo.title} (${pageInfo.url})

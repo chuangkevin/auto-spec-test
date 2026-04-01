@@ -247,7 +247,7 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
       const pageInfo = await browserService.getPageInfo(sessionId);
 
       const discussion = await testOrchestrator.discuss(
-        screenshot, elements, state.behaviors || [], pageInfo, state.broadcast
+        screenshot, elements, state.behaviors || [], pageInfo, state.broadcast, state.projectId
       );
 
       state.discussion = discussion;
@@ -318,16 +318,24 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
         enrichedSpec += '\n\n' + testOrchestrator.formatDiscussionForPrompt(state.discussion);
       }
 
-      // 用 AI 篩選跟目標頁面相關的 skill（輕量 call，只傳 name+description）
-      try {
-        const relevantSkills = await skillService.selectRelevant(pageInfo.url, pageInfo.title);
-        if (relevantSkills.length > 0) {
-          console.log(`[scan] 篩選出 ${relevantSkills.length} 個相關 skill: ${relevantSkills.map(s => s.name).join(', ')}`);
-          const skillsBlock = skillService.formatSkillsForPrompt(relevantSkills, 2000);
-          enrichedSpec += '\n\n' + skillsBlock;
+      // 優先用 project skill
+      const projectSkills = state.projectId ? skillService.getProjectSkills(state.projectId) : [];
+      if (projectSkills.length > 0) {
+        console.log(`[scan] 使用 ${projectSkills.length} 個 project skill`);
+        const skillsBlock = skillService.formatSkillsForPrompt(projectSkills, 2000);
+        enrichedSpec += '\n\n' + skillsBlock;
+      } else {
+        // fallback 到 global skill 篩選
+        try {
+          const relevantSkills = await skillService.selectRelevant(pageInfo.url, pageInfo.title);
+          if (relevantSkills.length > 0) {
+            console.log(`[scan] 篩選出 ${relevantSkills.length} 個相關 skill: ${relevantSkills.map(s => s.name).join(', ')}`);
+            const skillsBlock = skillService.formatSkillsForPrompt(relevantSkills, 2000);
+            enrichedSpec += '\n\n' + skillsBlock;
+          }
+        } catch (err) {
+          console.error('[scan] skill 篩選失敗:', err);
         }
-      } catch (err) {
-        console.error('[scan] skill 篩選失敗:', err);
       }
 
       // 如果有深度探索的頁面地圖，注入上下文

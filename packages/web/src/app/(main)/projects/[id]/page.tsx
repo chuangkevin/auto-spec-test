@@ -29,6 +29,7 @@ import SpecUploader from '@/components/SpecUploader';
 import OutlinePreview from '@/components/OutlinePreview';
 import ScriptEditor from '@/components/ScriptEditor';
 import TestExecutionPanel from '@/components/TestExecutionPanel';
+import ProjectSkillsPanel from '@/components/ProjectSkillsPanel';
 
 const STATUS_LABELS: Record<Project['status'], string> = {
   draft: '草稿',
@@ -754,6 +755,7 @@ function Tab1Content({
           scriptId={testScript.id}
           initialContent={testScript.content_md}
         />
+        <ProjectSkillsPanel projectId={projectId} />
         <ReuploadSection />
       </div>
     );

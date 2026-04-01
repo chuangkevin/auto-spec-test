@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { getDb } from '../db/connection.js';
 import { parseMultipleFiles } from '../services/fileParser.js';
 import { parseSpecification } from '../services/aiService.js';
+import { skillService } from '../services/skillService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOADS_DIR = path.resolve(__dirname, '../../uploads');
@@ -152,6 +153,13 @@ export default async function specificationRoutes(fastify: FastifyInstance) {
       db.prepare(
         'UPDATE specifications SET parsed_outline_md = ? WHERE id = ?'
       ).run(outlineMd, specId);
+
+      // 非同步觸發 project skill 生成
+      if (outlineMd && outlineMd.length >= 500) {
+        skillService.generateFromSpec(Number(projectId), outlineMd).catch(err => {
+          console.error('[specifications] skill 生成失敗:', err);
+        });
+      }
 
       return { specId, outlineMd };
     }
