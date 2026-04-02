@@ -1257,6 +1257,8 @@ async function executeStep(sessionId: string, step: any): Promise<string | null>
     case 'fill':
       if (step.target && step.value !== undefined) {
         await browserService.fill(sessionId, step.target, step.value);
+        // 等待 debounce（搜尋框常有 300ms debounce）
+        await new Promise(r => setTimeout(r, 500));
       }
       break;
     case 'select':

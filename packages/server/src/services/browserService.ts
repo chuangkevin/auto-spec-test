@@ -255,10 +255,18 @@ class BrowserService {
     await page.click(selector, { timeout: 10000 });
   }
 
-  /** 填入文字 */
+  /** 填入文字（先嘗試 fill，失敗則用 click + pressSequentially 模擬逐字輸入） */
   async fill(sessionId: string, selector: string, value: string): Promise<void> {
     const { page } = this.getSession(sessionId);
-    await page.fill(selector, value, { timeout: 10000 });
+    try {
+      await page.fill(selector, value, { timeout: 10000 });
+    } catch {
+      // fill 可能在某些自訂 input 上失敗，改用逐字輸入
+      await page.click(selector, { timeout: 10000 });
+      await page.keyboard.press('Control+a');
+      await page.keyboard.press('Backspace');
+      await page.keyboard.type(value, { delay: 50 });
+    }
   }
 
   /** 等待選擇器出現 */
