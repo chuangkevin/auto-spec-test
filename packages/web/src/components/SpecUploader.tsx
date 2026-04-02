@@ -4,7 +4,7 @@ import { useState, useRef, useCallback } from 'react';
 import { Upload, X, FileText, Loader2 } from 'lucide-react';
 import { BASE_URL } from '@/lib/api';
 
-const ACCEPTED_TYPES = ['.md', '.docx', '.xls', '.xlsx', '.csv'];
+const ACCEPTED_TYPES = ['.md', '.docx', '.xls', '.xlsx', '.csv', '.json', '.txt'];
 
 interface SpecUploaderProps {
   projectId: number;
@@ -27,7 +27,7 @@ export default function SpecUploader({ projectId, onUploadComplete }: SpecUpload
   const addFiles = useCallback((incoming: FileList | File[]) => {
     const valid = Array.from(incoming).filter(isAccepted);
     if (valid.length === 0) {
-      setError('不支援的檔案格式，請上傳 .md、.docx、.xls、.xlsx 或 .csv');
+      setError('不支援的檔案格式，請上傳 .md、.docx、.xls、.xlsx、.csv、.json 或 .txt');
       return;
     }
     setError(null);
@@ -126,7 +126,7 @@ export default function SpecUploader({ projectId, onUploadComplete }: SpecUpload
           拖曳檔案到此處，或點擊選取檔案
         </p>
         <p className="mt-1 text-xs text-gray-500">
-          支援格式：.md、.docx、.xls、.xlsx、.csv
+          支援格式：.md、.docx、.xls、.xlsx、.csv、.json、.txt
         </p>
         <input
           ref={inputRef}

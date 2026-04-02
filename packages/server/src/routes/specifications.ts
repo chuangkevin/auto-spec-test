@@ -88,7 +88,7 @@ export default async function specificationRoutes(fastify: FastifyInstance) {
         specId = existingSpec.id;
 
         db.prepare(
-          `UPDATE specifications SET original_files = ?, parsed_outline_md = NULL, updated_at = datetime('now') WHERE id = ?`
+          `UPDATE specifications SET original_files = ?, parsed_outline_md = NULL WHERE id = ?`
         ).run(JSON.stringify(allFiles), existingSpec.id);
       } else {
         // 新建 spec

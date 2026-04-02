@@ -11,6 +11,7 @@ export async function parseFile(filePath: string, mimeType: string): Promise<str
   switch (ext) {
     case '.md':
     case '.txt':
+    case '.json':
       return parseTextFile(filePath);
     case '.docx':
       return parseDocx(filePath);

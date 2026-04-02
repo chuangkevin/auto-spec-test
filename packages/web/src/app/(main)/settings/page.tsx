@@ -502,8 +502,7 @@ function GiteaSection() {
         <div className="space-y-4">
           <div className="rounded-md bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-700">
             請在 Gitea &rarr; Settings &rarr; Applications &rarr; Access Tokens 建立 Token，權限設定建議：
-            <strong>issue</strong>: Read and Write、<strong>organization</strong>: Read、<strong>repository</strong>: Read and Write。
-            user 權限不需要。
+            <strong>user</strong>: Read、<strong>issue</strong>: Read and Write、<strong>organization</strong>: Read、<strong>repository</strong>: Read and Write。
           </div>
 
           <div>
