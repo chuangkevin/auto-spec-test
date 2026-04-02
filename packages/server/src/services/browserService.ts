@@ -32,12 +32,14 @@ class BrowserService {
   }
 
   /** 建立新的測試 session */
-  async createSession(sessionId: string): Promise<{ context: BrowserContext; page: Page }> {
-    // 如果已滿，關閉最舊的 session
+  async createSession(sessionId: string, activeSessionIds?: Set<string>): Promise<{ context: BrowserContext; page: Page }> {
+    // 如果已滿，關閉最舊且非活躍的 session
     if (this.sessions.size >= MAX_SESSIONS) {
       let oldestId: string | null = null;
       let oldestTime = Infinity;
       for (const [id, session] of this.sessions) {
+        // 跳過正在執行測試的 session
+        if (activeSessionIds?.has(id)) continue;
         if (session.createdAt < oldestTime) {
           oldestTime = session.createdAt;
           oldestId = id;
@@ -45,6 +47,21 @@ class BrowserService {
       }
       if (oldestId) {
         await this.closeSession(oldestId);
+      }
+      // 如果所有 session 都活躍，仍需為新 session 騰位
+      if (!oldestId && this.sessions.size >= MAX_SESSIONS) {
+        // 找真正最老的（不管活躍與否）
+        let fallbackId: string | null = null;
+        let fallbackTime = Infinity;
+        for (const [id, session] of this.sessions) {
+          if (session.createdAt < fallbackTime) {
+            fallbackTime = session.createdAt;
+            fallbackId = id;
+          }
+        }
+        if (fallbackId) {
+          await this.closeSession(fallbackId);
+        }
       }
     }
 

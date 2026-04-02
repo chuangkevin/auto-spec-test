@@ -16,7 +16,7 @@ interface RunnerState {
   url: string;
   projectId?: number;
   specContent?: string;
-  status: 'scanning' | 'ready' | 'running' | 'paused' | 'manual' | 'done';
+  status: 'scanning' | 'ready' | 'running' | 'paused' | 'manual' | 'done' | 'exploring';
   scanResult?: any;
   behaviors?: Array<{
     selector: string;
@@ -101,7 +101,14 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
     const sessionId = randomUUID();
 
     try {
-      await browserService.createSession(sessionId);
+      // 傳入正在執行測試的 session IDs，避免驅逐活躍 session
+      const activeIds = new Set<string>();
+      for (const [id, s] of runnerStates) {
+        if (s.status === 'running' || s.status === 'scanning' || s.status === 'exploring') {
+          activeIds.add(id);
+        }
+      }
+      await browserService.createSession(sessionId, activeIds);
       await browserService.navigateTo(sessionId, url);
     } catch (err: any) {
       await browserService.closeSession(sessionId);
@@ -322,7 +329,7 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
       const projectSkills = state.projectId ? skillService.getProjectSkills(state.projectId) : [];
       if (projectSkills.length > 0) {
         console.log(`[scan] 使用 ${projectSkills.length} 個 project skill`);
-        const skillsBlock = skillService.formatSkillsForPrompt(projectSkills, 2000);
+        const skillsBlock = skillService.formatSkillsForPrompt(projectSkills, 4000);
         enrichedSpec += '\n\n' + skillsBlock;
       } else {
         // fallback 到 global skill 篩選
@@ -330,7 +337,7 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
           const relevantSkills = await skillService.selectRelevant(pageInfo.url, pageInfo.title);
           if (relevantSkills.length > 0) {
             console.log(`[scan] 篩選出 ${relevantSkills.length} 個相關 skill: ${relevantSkills.map(s => s.name).join(', ')}`);
-            const skillsBlock = skillService.formatSkillsForPrompt(relevantSkills, 2000);
+            const skillsBlock = skillService.formatSkillsForPrompt(relevantSkills, 4000);
             enrichedSpec += '\n\n' + skillsBlock;
           }
         } catch (err) {

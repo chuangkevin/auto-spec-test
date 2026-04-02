@@ -278,10 +278,14 @@ ${pureSpec.slice(0, 8000)}
 `;
       }
       if (skillBlock) {
-        prompt += `## 領域知識（AI Skills）
-${skillBlock.slice(0, 4000)}
+        prompt += `## ⚠️ 領域知識（AI Skills）— 必須嚴格遵守
 
-**根據領域知識中的業務規則產出對應的測試案例。**
+${skillBlock.slice(0, 8000)}
+
+**嚴格遵守以上領域知識中的所有規則：**
+- 如果領域知識描述了 URL 格式（如 path-based 參數 /0-20000_price/、/信義區_kw/），你 **必須** 使用該格式，**禁止** 自己編造 query string 參數（如 ?price_min=X&kw=Y）
+- 測試案例中 navigate action 的 URL **必須** 完全符合領域知識描述的格式
+- 如果領域知識和下方的「常見功能測試策略」衝突，**以領域知識為準**
 
 `;
       }
@@ -317,10 +321,16 @@ ${behaviorsSummary}
 - 任何只有一個 assert 步驟的測試
 
 ### 常見功能的測試策略
-- **分頁**：用 navigate 直接改 URL 參數（如 ?p=2）來測試，不需要找分頁按鈕的 selector
-- **篩選器/下拉選單**：如果元件列表中有對應的 select/dropdown，用 click + 等待展開 + click 選項。如果找不到穩定 selector，用 navigate 改 URL 參數
+- **分頁**：用 navigate 直接改 URL 來測試，不需要找分頁按鈕的 selector。**URL 格式必須依照規格書或領域知識描述**，不要自己猜測
+- **篩選器/下拉選單**：如果元件列表中有對應的 select/dropdown，用 click + 等待展開 + click 選項。如果找不到穩定 selector，用 navigate 改 URL。**URL 格式必須依照規格書或領域知識描述，禁止自己編造 query string 參數**
 - **搜尋框**：用 [placeholder="XXX"] 或 [name="XXX"] 定位，不要用 placeholder=XXX（語法錯誤）
 - **卡片/列表項連結**：如果能在元件列表中找到 <a> 連結的 href，直接用 navigate 去該 URL 測試詳情頁
+
+### 預期結果必須有依據
+- 每個 assert 步驟的預期結果 **必須** 能從規格書或領域知識中找到對應的規則，**禁止** 自己腦補
+- 例：如果規格書說 title 格式是「5168租屋比價王 | [現況]出租 - [區域]」，就不能假設 title 會包含關鍵字
+- 例：如果規格書沒提到某個 UI 狀態變化，就不能把它當預期結果
+- 如果你不確定某個行為的預期結果，**不要產出該 assert**，改為產出可以確定的驗證點（如 URL 變化）
 
 ### 覆蓋率要求
 - 如果上方有「AI 團隊討論紀錄」和「必須覆蓋的測試重點」，你 **必須** 為每個討論重點產出至少一個對應的測試案例，不能遺漏
