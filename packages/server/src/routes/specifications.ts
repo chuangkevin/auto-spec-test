@@ -11,7 +11,7 @@ import { skillService } from '../services/skillService.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOADS_DIR = path.resolve(__dirname, '../../uploads');
 
-const ALLOWED_EXTENSIONS = ['.md', '.docx', '.xls', '.xlsx', '.csv'];
+const ALLOWED_EXTENSIONS = ['.md', '.docx', '.xls', '.xlsx', '.csv', '.json', '.txt'];
 const MAX_FILES = 20;
 
 export default async function specificationRoutes(fastify: FastifyInstance) {
