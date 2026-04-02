@@ -324,7 +324,12 @@ ${behaviorsSummary}
 - **分頁**：用 navigate 直接改 URL 來測試，不需要找分頁按鈕的 selector。**URL 格式必須依照規格書或領域知識描述**，不要自己猜測
 - **篩選器/下拉選單**：如果元件列表中有對應的 select/dropdown，用 click + 等待展開 + click 選項。如果找不到穩定 selector，用 navigate 改 URL。**URL 格式必須依照規格書或領域知識描述，禁止自己編造 query string 參數**
 - **搜尋框**：用 [placeholder="XXX"] 或 [name="XXX"] 定位，不要用 placeholder=XXX（語法錯誤）
-- **卡片/列表項連結**：如果能在元件列表中找到 <a> 連結的 href，直接用 navigate 去該 URL 測試詳情頁
+- **卡片/列表項連結**：如果能在元件列表中找到 <a> 連結的 href，直接用 navigate 去該 URL 測試詳情頁。**禁止用物件標題、價格等動態內容作為 selector**（如 text="焦點 10張照片..."），因為每次載入的物件不同，改用穩定的 CSS selector（如 .card:first-child a, [data-testid] 等）或直接 navigate 到已知的詳情頁 URL
+
+### Selector 穩定性
+- **禁止用動態資料作為 selector**：物件標題、價格、坪數等每次載入都不同的文字不能當 click target
+- 如果要測試「點擊列表中的物件」，用 CSS selector（如 .list-item:first-child a、a[href*="/house/"]）或直接 navigate 到詳情頁 URL
+- 如果截圖中能看到具體的連結 href，優先用 navigate 而非 click
 
 ### 預期結果必須有依據
 - 每個 assert 步驟的預期結果 **必須** 能從規格書或領域知識中找到對應的規則，**禁止** 自己腦補
