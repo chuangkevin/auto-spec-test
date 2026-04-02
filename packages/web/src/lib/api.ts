@@ -1,5 +1,8 @@
-// production: 空字串（同 origin，透過 Ingress 轉發）; dev: localhost:4001
-export const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4001';
+// Next.js inlines process.env.NEXT_PUBLIC_* at build time (must use directly).
+// Docker build: NEXT_PUBLIC_API_URL="" → same origin via nginx proxy.
+// Local dev: no env set → fallback to localhost:4001.
+export const BASE_URL: string =
+  process.env.NEXT_PUBLIC_API_URL !== undefined ? process.env.NEXT_PUBLIC_API_URL : 'http://localhost:4001';
 
 async function request<T>(
   method: string,
