@@ -71,31 +71,42 @@ export default async function specificationRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: '請至少上傳一個檔案' });
       }
 
-      // Get current version
-      const latest = db
-        .prepare(
-          'SELECT MAX(version) as maxVersion FROM specifications WHERE project_id = ?'
-        )
-        .get(projectId) as any;
-      const version = (latest?.maxVersion || 0) + 1;
+      // 如果已有 spec，merge 新檔案到現有 spec；否則建立新的
+      const existingSpec = db
+        .prepare('SELECT id, original_files, version FROM specifications WHERE project_id = ? ORDER BY version DESC LIMIT 1')
+        .get(projectId) as { id: number; original_files: string; version: number } | undefined;
 
-      // Insert specification record
-      const result = db
-        .prepare(
-          `INSERT INTO specifications (project_id, original_files, version, uploaded_by)
-           VALUES (?, ?, ?, ?)`
-        )
-        .run(
-          projectId,
-          JSON.stringify(savedFiles),
-          version,
-          (request.user as any).id
-        );
+      let specId: number | bigint;
+      let version: number;
+      let allFiles: typeof savedFiles;
+
+      if (existingSpec) {
+        // Merge: 把新檔案加到現有 spec
+        const existingFiles = JSON.parse(existingSpec.original_files) as typeof savedFiles;
+        allFiles = [...existingFiles, ...savedFiles];
+        version = existingSpec.version;
+        specId = existingSpec.id;
+
+        db.prepare(
+          `UPDATE specifications SET original_files = ?, parsed_outline_md = NULL, updated_at = datetime('now') WHERE id = ?`
+        ).run(JSON.stringify(allFiles), existingSpec.id);
+      } else {
+        // 新建 spec
+        allFiles = savedFiles;
+        version = 1;
+        const result = db
+          .prepare(
+            `INSERT INTO specifications (project_id, original_files, version, uploaded_by)
+             VALUES (?, ?, ?, ?)`
+          )
+          .run(projectId, JSON.stringify(savedFiles), 1, (request.user as any).id);
+        specId = result.lastInsertRowid;
+      }
 
       return reply.status(201).send({
-        id: result.lastInsertRowid,
+        id: specId,
         projectId,
-        files: savedFiles.map((f) => ({ name: f.name, size: f.size, type: f.type })),
+        files: allFiles.map((f) => ({ name: f.name, size: f.size, type: f.type })),
         version,
       });
     }
