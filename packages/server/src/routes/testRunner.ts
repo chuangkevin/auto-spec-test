@@ -1019,24 +1019,22 @@ async function executeTests(
             } catch { /* ignore */ }
           }
 
-          // 所有策略失敗 → 通知前端使用者手動登入
+          // 所有策略失敗 → 跳過此測試案例，標記為 skipped
           if (!loginRecovered) {
-            console.warn(`[testRunner] 自動登入恢復失敗，請求手動介入`);
+            console.warn(`[testRunner] 自動登入恢復失敗，跳過 ${tc.id}`);
+            skippedCount++;
+            const skipReason = '需要登入，自動登入恢復失敗，已跳過';
             if (state.broadcast) {
               state.broadcast({
-                type: 'need-manual-login',
-                data: { message: '偵測到登入頁面，自動登入失敗，請手動登入後繼續', testCaseId: tc.id },
+                type: 'result',
+                data: { testCaseId: tc.id, passed: false, actualResult: skipReason, skipped: true },
               });
             }
-            // 進入手動模式，等待使用者登入
-            state.status = 'manual';
-            state.paused = true;
-            broadcastStatus(state);
-            // 等待使用者完成手動登入（manual-end API 會解除 paused）
-            while (state.paused && !state.stopped) {
-              await new Promise((r) => setTimeout(r, 500));
-            }
-            if (state.stopped) break;
+            db.prepare(
+              `INSERT INTO test_case_results (test_run_id, case_id, name, status, steps, expected_result, actual_result, started_at, completed_at)
+               VALUES (?, ?, ?, 'skipped', ?, ?, ?, datetime('now'), datetime('now'))`
+            ).run(testRunId, tc.id, tc.name, JSON.stringify(tc.steps), tc.expectedResult, skipReason);
+            continue;
           }
         }
       } catch { /* ignore */ }
