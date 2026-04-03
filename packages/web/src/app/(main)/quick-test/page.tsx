@@ -49,7 +49,7 @@ export default function QuickTestPage() {
             onChange={(e) => setUrl(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleStart()}
             placeholder="https://your-website.com"
-            className="flex-1 rounded-lg border border-gray-300 px-4 py-3 text-lg placeholder:text-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            className="flex-1 rounded-lg border border-gray-300 px-4 py-3 text-lg text-gray-900 placeholder:text-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
             autoFocus
           />
           <button
