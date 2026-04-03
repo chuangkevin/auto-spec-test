@@ -114,7 +114,7 @@ jobs:
           for i in $(seq 1 24); do
             echo "  Attempt $i/24..."
             if ssh -i ~/.ssh/deploy_key ${DEPLOY_USER}@${DEPLOY_SERVER_IP} \
-              'curl -sf http://localhost:8123 > /dev/null 2>&1'; then
+              'curl -sf http://localhost:8223 > /dev/null 2>&1'; then
               echo "✅ Health check passed!"
               exit 0
             fi

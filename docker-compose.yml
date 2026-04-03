@@ -4,7 +4,7 @@ services:
     container_name: auto-spec-test
     restart: unless-stopped
     ports:
-      - "8123:3000"
+      - "8223:3000"
     volumes:
       - ./data:/app/data
     environment:
