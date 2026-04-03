@@ -6,7 +6,7 @@ services:
     ports:
       - "8223:3000"
     volumes:
-      - ./data:/app/data
+      - ./data:/app/packages/server/data
     environment:
       - NODE_ENV=production
       - GEMINI_API_KEY=${GEMINI_API_KEY}
