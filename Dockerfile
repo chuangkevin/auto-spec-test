@@ -28,7 +28,7 @@ RUN pnpm --filter web build
 
 # ── Stage 2: Production ────────────────────────────────────
 # 用 Playwright 官方 image — 已內建 Chromium + 所有系統依賴，不需要 apt-get
-FROM mcr.microsoft.com/playwright:v1.52.0-noble
+FROM mcr.microsoft.com/playwright:v1.58.2-noble
 
 WORKDIR /app
 
