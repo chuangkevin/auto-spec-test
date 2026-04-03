@@ -1,0 +1,14 @@
+services:
+  auto-spec-test:
+    image: kevin950805/auto-spec-test:latest
+    container_name: auto-spec-test
+    restart: unless-stopped
+    ports:
+      - "8123:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - NODE_ENV=production
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - MAX_BROWSER_SESSIONS=2
