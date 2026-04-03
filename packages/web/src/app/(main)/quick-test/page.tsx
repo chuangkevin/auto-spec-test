@@ -39,7 +39,7 @@ export default function QuickTestPage() {
           </div>
         </div>
         <h1 className="mb-2 text-3xl font-bold text-gray-900">快速測試</h1>
-        <p className="mb-8 text-gray-600">
+        <p className="mb-8 text-gray-800">
           貼上網址，AI 自動掃描頁面元件、規劃測試案例、逐條執行
         </p>
         <div className="flex gap-2">
@@ -61,7 +61,7 @@ export default function QuickTestPage() {
             <ArrowRight className="h-5 w-5" />
           </button>
         </div>
-        <p className="mt-4 text-sm text-gray-600">
+        <p className="mt-4 text-sm text-gray-700">
           不需要建立專案或上傳規格書，直接測試任何網站
         </p>
       </div>
