@@ -135,7 +135,7 @@ jobs:
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Server**: \`${{ secrets.DEPLOY_SERVER_IP }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Image**: \`${{ env.DOCKERHUB_USERNAME }}/auto-spec-test:latest\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **URL**: \`https://spectest.sisihome.org\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL**: \`https://autospec.sisihome.org\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Deployed at: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
 
