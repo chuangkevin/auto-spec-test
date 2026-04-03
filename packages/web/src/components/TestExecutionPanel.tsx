@@ -789,8 +789,10 @@ export default function TestExecutionPanel({
         <div className="flex items-center gap-3 rounded-lg border-2 border-orange-400 bg-orange-50 px-4 py-3">
           <Hand size={20} className="text-orange-600 animate-pulse" />
           <div className="flex-1">
-            <p className="text-sm font-bold text-orange-800">手動操作中 — 點擊下方截圖操作瀏覽器</p>
-            <p className="text-xs text-orange-600">截圖每秒更新</p>
+            <p className="text-sm font-bold text-orange-800">
+              {currentStep || '手動操作中 — 點擊下方截圖操作瀏覽器'}
+            </p>
+            <p className="text-xs text-orange-600">點擊下方截圖操作瀏覽器，完成後按右側按鈕繼續</p>
           </div>
           <button
             type="button"
@@ -943,15 +945,15 @@ export default function TestExecutionPanel({
               )}
 
               {/* 手動操作中 */}
-              {status === 'manual' && currentStep && (
-                <div className="flex items-center gap-3 rounded-md border border-orange-300 bg-orange-50 px-4 py-3 w-full">
+              {status === 'manual' && (
+                <div className="flex items-center gap-3 rounded-md border-2 border-orange-400 bg-orange-50 px-4 py-3 w-full">
                   <Hand size={18} className="text-orange-600 animate-pulse" />
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-orange-800">
-                      手動操作中 — 請在左側瀏覽器中完成操作
+                    <p className="text-sm font-bold text-orange-800">
+                      {currentStep || '手動操作中 — 請在左側瀏覽器中完成操作'}
                     </p>
                     <p className="text-xs text-orange-600 mt-0.5">
-                      截圖每 0.5 秒更新一次，你可以看到即時畫面
+                      請在左側瀏覽器中完成操作，截圖每 0.5 秒更新
                     </p>
                   </div>
                   <button
