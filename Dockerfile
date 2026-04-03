@@ -1,6 +1,7 @@
 # ── Stage 1: Build ──────────────────────────────────────────
-FROM node:22 AS builder
-# node:22 (non-slim) 已內建 python3, make, g++，不需要 apt-get
+FROM node:24 AS builder
+# node:24 (non-slim) 已內建 python3, make, g++，不需要 apt-get
+# Must match Node version in playwright image (v1.58.2 uses Node 24)
 
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@latest --activate
