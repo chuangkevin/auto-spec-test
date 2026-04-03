@@ -69,6 +69,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           );
         })}
       </ul>
+
+      <div className="px-4 py-3 text-xs text-gray-500">
+        v{process.env.APP_VERSION}
+      </div>
     </nav>
   );
 
