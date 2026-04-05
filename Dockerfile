@@ -4,6 +4,7 @@ FROM node:24 AS builder
 # Must match Node version in playwright image (v1.58.2 uses Node 24)
 
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # Install dependencies (layer cache)
