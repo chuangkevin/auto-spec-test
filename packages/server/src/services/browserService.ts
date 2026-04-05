@@ -192,14 +192,14 @@ class BrowserService {
   /** 截圖（回傳 base64） */
   async screenshot(sessionId: string): Promise<string> {
     const { page } = this.getSession(sessionId);
-    const buffer = await page.screenshot({ type: 'jpeg', quality: 60 });
+    const buffer = await page.screenshot({ type: 'jpeg', quality: 60, timeout: 5000 });
     return buffer.toString('base64');
   }
 
   /** 全頁截圖（擷取完整頁面，品質較高） */
   async fullPageScreenshot(sessionId: string): Promise<string> {
     const { page } = this.getSession(sessionId);
-    const buffer = await page.screenshot({ type: 'jpeg', quality: 70, fullPage: true });
+    const buffer = await page.screenshot({ type: 'jpeg', quality: 70, fullPage: true, timeout: 10000 });
     return buffer.toString('base64');
   }
 

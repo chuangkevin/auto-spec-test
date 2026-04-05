@@ -146,7 +146,10 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
       const pageInfo = await browserService.getPageInfo(sessionId);
       return { screenshot, pageInfo };
     } catch (err: any) {
-      return reply.status(500).send({ error: err.message });
+      // Page is temporarily busy (e.g. screenshot timeout while test is running a step).
+      // Return 503 so the frontend knows to retry, not treat it as a fatal error.
+      const isTimeout = err.message?.includes('timeout') || err.message?.includes('Timeout');
+      return reply.status(isTimeout ? 503 : 500).send({ error: err.message });
     }
   });
 
