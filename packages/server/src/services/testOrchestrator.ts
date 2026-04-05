@@ -86,7 +86,8 @@ export class TestOrchestrator {
     behaviors: any[],
     pageInfo: { url: string; title: string },
     broadcast?: (msg: any) => void,
-    projectId?: number
+    projectId?: number,
+    specContent?: string
   ): Promise<DiscussionMessage[]> {
     // 優先用 project skill
     let skillsBlock = '';
@@ -119,6 +120,11 @@ export class TestOrchestrator {
       ? `\n\n**重要：你擁有以下領域知識，請務必根據這些知識來分析測試重點。如果領域知識提到特定業務規則、流程、或注意事項，你必須在發言中提及。**\n\n${skillsBlock}`
       : '';
 
+    // 如果有規格書，注入到 Echo 的 prompt 中
+    const specInstruction = specContent
+      ? `\n\n## 正式規格書（最高優先）\n以下是此產品的正式規格書。你的討論必須以規格書的功能需求為出發點，不是以截圖觀察為出發點。先問「spec 要求測什麼」，再問「頁面有沒有實作」。\n\n${specContent.slice(0, 2000)}`
+      : '';
+
     const messages: DiscussionMessage[] = [];
     const send = (msg: DiscussionMessage) => {
       messages.push(msg);
@@ -126,11 +132,11 @@ export class TestOrchestrator {
     };
 
     // Echo (QA 策略師) — 先發言
-    const echoPrompt = `你是 Echo，一位資深 QA 策略師。用口語化、有個性的方式分析這個網頁，說出你認為的測試重點。像是在跟同事開會討論一樣，不要太正式。2-4 句話。${skillInstruction ? '\n\n你必須根據領域知識中的業務規則來規劃測試方向，不要只看截圖表面。' : ''}
+    const echoPrompt = `你是 Echo，一位資深 QA 策略師。用口語化、有個性的方式分析這個網頁，說出你認為的測試重點。像是在跟同事開會討論一樣，不要太正式。2-4 句話。${specInstruction ? '\n\n你必須根據規格書的功能需求來規劃測試方向，不要只看截圖表面。' : (skillInstruction ? '\n\n你必須根據領域知識中的業務規則來規劃測試方向，不要只看截圖表面。' : '')}
 
-${pageContext}${skillInstruction}
+${pageContext}${specInstruction}${skillInstruction}
 
-只回傳 JSON: { "message": "你的發言（口語化，如果有領域知識請務必引用）" }`;
+只回傳 JSON: { "message": "你的發言（口語化，如果有規格書或領域知識請務必引用）" }`;
     try {
       const res = cleanJson(await callGemini(echoPrompt, [screenshot]));
       send({ ...AI_AGENTS.echo, message: res.message });
@@ -139,11 +145,11 @@ ${pageContext}${skillInstruction}
     // Lisa (前端專家) — 回應 Echo，補充技術觀點
     const lisaPrompt = `你是 Lisa，一位前端技術專家。你的同事 Echo 剛說了：「${messages[0]?.message || ''}」
 
-你要回應他，並從技術角度補充你的看法。像是在跟同事討論一樣，可以同意也可以提出不同意見。2-4 句話。${skillInstruction ? '\n\n如果領域知識中有技術細節（如 API、資料流、元件行為），請引用並補充。' : ''}
+你要回應他，並從技術角度補充你的看法。像是在跟同事討論一樣，可以同意也可以提出不同意見。2-4 句話。${specInstruction ? '\n\n根據規格書，請補充技術實作細節（如 URL 格式、API 行為、元件互動）。' : (skillInstruction ? '\n\n如果領域知識中有技術細節（如 API、資料流、元件行為），請引用並補充。' : '')}
 
-${pageContext}${skillInstruction}
+${pageContext}${specInstruction}${skillInstruction}
 
-只回傳 JSON: { "message": "你的回應（口語化，引用領域知識中的技術細節）" }`;
+只回傳 JSON: { "message": "你的回應（口語化，引用規格書或領域知識中的技術細節）" }`;
     try {
       const res = cleanJson(await callGemini(lisaPrompt, [screenshot]));
       send({ ...AI_AGENTS.lisa, message: res.message });
@@ -154,11 +160,11 @@ ${pageContext}${skillInstruction}
 - Echo: ${messages[0]?.message || ''}
 - Lisa: ${messages[1]?.message || ''}
 
-你要從使用者體驗的角度回應，可以贊同、反駁或提出新觀點。像是在跟同事討論一樣。2-4 句話。${skillInstruction ? '\n\n如果領域知識中有 UX 相關規則（如流程、提示、錯誤處理），請引用。' : ''}
+你要從使用者體驗的角度回應，可以贊同、反駁或提出新觀點。像是在跟同事討論一樣。2-4 句話。${specInstruction ? '\n\n根據規格書，請從 UX 角度確認規格書描述的流程是否在頁面中正確實作。' : (skillInstruction ? '\n\n如果領域知識中有 UX 相關規則（如流程、提示、錯誤處理），請引用。' : '')}
 
-${pageContext}${skillInstruction}
+${pageContext}${specInstruction}${skillInstruction}
 
-只回傳 JSON: { "message": "你的回應（口語化，引用領域知識中的 UX 要求）" }`;
+只回傳 JSON: { "message": "你的回應（口語化，引用規格書或領域知識中的 UX 要求）" }`;
     try {
       const res = cleanJson(await callGemini(bobPrompt, [screenshot]));
       send({ ...AI_AGENTS.bob, message: res.message });
@@ -245,6 +251,43 @@ ${failedSummary}
         adjustments: [],
         summary: '無法分析失敗原因，保留所有結果',
       };
+    }
+  }
+}
+
+  /**
+   * Fix 4: 驗證測試計畫對規格書的覆蓋率
+   * 回傳未被任何 TC 覆蓋的規格書章節清單
+   */
+  async verifySpecCoverage(specContent: string, testPlan: any[]): Promise<string[]> {
+    if (!specContent || testPlan.length === 0) return [];
+
+    const tcSummary = testPlan
+      .map(tc => `${tc.id} [${tc.category}] ${tc.name}: ${tc.expectedResult || ''}`)
+      .join('\n');
+
+    const prompt = `你是 QA Lead。請分析以下規格書和測試計畫，找出規格書中哪些 ## 功能模組沒有對應的測試案例。
+
+## 規格書內容（節錄）
+${specContent.slice(0, 3000)}
+
+## 現有測試計畫
+${tcSummary}
+
+請逐一檢查規格書的每個 ## 章節，判斷是否有至少一個 TC 涵蓋該章節的主要功能。
+
+只回傳 JSON:
+{
+  "uncovered": ["未覆蓋的章節名稱1", "未覆蓋的章節名稱2"]
+}
+
+如果全部都有覆蓋，回傳 { "uncovered": [] }`;
+
+    try {
+      const result = cleanJson(await callGemini(prompt));
+      return result.uncovered || [];
+    } catch {
+      return [];
     }
   }
 }

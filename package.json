@@ -1,6 +1,6 @@
 {
   "name": "auto-spec-test",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "scripts": {
     "dev:server": "pnpm --filter server dev",

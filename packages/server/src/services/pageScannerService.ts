@@ -187,7 +187,10 @@ class PageScannerService {
     pageInfo: { url: string; title: string },
     specContent?: string,
     behaviors?: Array<{ selector: string; type: string; description: string }>,
-    domTree?: any
+    domTree?: any,
+    discussionText?: string,
+    skillsContent?: string,
+    rawSpecText?: string
   ): Promise<ScanResult> {
     const elementsSummary = elements
       .slice(0, 80) // 掃描更多元素
@@ -258,29 +261,36 @@ ${domTreeFormatted}
 
 `;
 
-    if (specContent) {
-      // 分離規格書內容和 skill 領域知識
-      const skillSeparator = '=== 領域知識（AI Skills） ===';
-      const skillIdx = specContent.indexOf(skillSeparator);
-      const pureSpec = skillIdx >= 0 ? specContent.slice(0, skillIdx).trim() : specContent;
-      const skillBlock = skillIdx >= 0 ? specContent.slice(skillIdx) : '';
+    // 注入原始規格書文字（最高信任度，4000 chars）
+    if (rawSpecText) {
+      prompt += `## ⚠️ 規格書原文（最高信任度）
 
-      if (pureSpec) {
-        prompt += `## ⚠️ 產品規格書（最高優先級 — 必須嚴格遵守）
+以下是使用者上傳的規格書原始內容。**這是最高優先的參考依據，所有 URL 格式、功能規則、業務邏輯都以此為準。**
+
+${rawSpecText.slice(0, 4000)}
+
+`;
+    }
+
+    // 注入 AI 解析後的規格書大綱（8000 chars）
+    if (specContent) {
+      prompt += `## ⚠️ 產品規格書大綱（最高優先級 — 必須嚴格遵守）
 
 以下是此產品的正式規格書。**你的測試案例必須嚴格依照規格書描述的功能、URL 格式、篩選邏輯、業務規則來設計。**
 - 如果規格書描述了 URL 參數規則，你 **必須** 使用規格書中的 URL 格式，**禁止** 自己編造 URL 參數
 - 如果規格書描述了篩選條件的行為（如「清空條件保留現況」），測試的預期結果 **必須** 符合規格書
 - 如果規格書描述了某功能的邊界情況，**必須** 為其設計測試案例
 
-${pureSpec.slice(0, 8000)}
+${specContent.slice(0, 8000)}
 
 `;
-      }
-      if (skillBlock) {
-        prompt += `## ⚠️ 領域知識（AI Skills）— 必須嚴格遵守
+    }
 
-${skillBlock.slice(0, 8000)}
+    // 注入領域知識（AI Skills，4000 chars）
+    if (skillsContent) {
+      prompt += `## ⚠️ 領域知識（AI Skills）— 必須嚴格遵守
+
+${skillsContent.slice(0, 4000)}
 
 **嚴格遵守以上領域知識中的所有規則：**
 - 如果領域知識描述了 URL 格式（如 path-based 參數 /0-20000_price/、/信義區_kw/），你 **必須** 使用該格式，**禁止** 自己編造 query string 參數（如 ?price_min=X&kw=Y）
@@ -288,7 +298,15 @@ ${skillBlock.slice(0, 8000)}
 - 如果領域知識和下方的「常見功能測試策略」衝突，**以領域知識為準**
 
 `;
-      }
+    }
+
+    // 注入討論摘要（2000 chars）
+    if (discussionText) {
+      prompt += `## AI 團隊討論摘要
+
+${discussionText.slice(0, 2000)}
+
+`;
     }
 
     if (behaviors && behaviors.length > 0) {
@@ -348,13 +366,19 @@ ${behaviorsSummary}
 - 驗證列表存在時，優先用 URL 變化或 page title 確認導航成功，而非依賴截圖中是否看到物件卡片
 - 對需要捲動才能看到的內容，不要寫 assert 去驗證它在截圖中可見
 
-### 覆蓋率要求
-- 如果上方有「AI 團隊討論紀錄」和「必須覆蓋的測試重點」，你 **必須** 為每個討論重點產出至少一個對應的測試案例，不能遺漏
-- 如果討論提到某功能但 DOM 中找不到元素，產出一個 category="missing" 的案例標記
+### 規格書覆蓋率要求（最高優先，凌駕數量限制）
+如果上方有規格書，你的 testPlan 必須：
+1. 為規格書中每個 ## 層級的功能模組產出至少一個測試案例
+2. 每個 TC 的 category 欄位必須標明對應的規格書章節
+3. 規格書有 N 個功能模組 → 需要 ≥N 個 TC，不受 6-12 上限限制
+4. 若 DOM 中找不到規格書要求的功能對應元素，用 category="missing" 標記，不可跳過
+5. 討論中提到但規格書未提及的功能，可以產出測試，但優先級設為 "low"
+
+如果上方有「AI 團隊討論摘要」和「必須覆蓋的測試重點」，你 **必須** 為每個討論重點產出至少一個對應的測試案例，不能遺漏
 
 ### 數量與品質
 - components: 列出 5-15 個主要元件
-- testPlan: 產出 **6-12 個**高品質測試案例（如果討論重點多，可以超過 10 個）
+- testPlan: 無規格書時產出 **6-12 個**高品質測試案例；有規格書時產出數量以規格書功能模組數為下限
 - 每個案例 **2-5 個**連續操作步驟
 - 每個案例至少包含一個有業務意義的操作（click/fill/select）和一個驗證點
 - description 限 15 字，expectedResult 限 30 字

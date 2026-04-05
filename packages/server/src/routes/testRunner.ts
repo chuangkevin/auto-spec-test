@@ -254,7 +254,8 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
       const pageInfo = await browserService.getPageInfo(sessionId);
 
       const discussion = await testOrchestrator.discuss(
-        screenshot, elements, state.behaviors || [], pageInfo, state.broadcast, state.projectId
+        screenshot, elements, state.behaviors || [], pageInfo, state.broadcast, state.projectId,
+        state.specContent
       );
 
       state.discussion = discussion;
@@ -319,58 +320,89 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
       const pageInfo = await browserService.getPageInfo(sessionId);
       const domTree = await browserService.getDomTree(sessionId);
 
-      // 如果有討論結果，加入 specContent
-      let enrichedSpec = state.specContent || '';
+      // 規格書大綱（AI 解析）— 獨立預算 8000 chars
+      const pureSpec = state.specContent || undefined;
+
+      // 討論摘要 — 獨立預算 2000 chars
+      let discussionText: string | undefined;
       if (state.discussion && state.discussion.length > 0) {
-        enrichedSpec += '\n\n' + testOrchestrator.formatDiscussionForPrompt(state.discussion);
+        discussionText = testOrchestrator.formatDiscussionForPrompt(state.discussion);
       }
 
-      // 優先用 project skill
+      // 頁面地圖注入到討論文字（額外上下文）
+      if (state.siteMap && state.siteMap.length > 1) {
+        const mapSummary = state.siteMap.map((p, i) =>
+          `${i + 1}. [${p.pageType}] ${p.title} (${p.url})${p.fromLinkText ? ` ← 從「${p.fromLinkText}」進入` : ''}\n   元件: ${p.components.map(c => `<${c.tag}>${c.text}`).join(', ')}`
+        ).join('\n');
+        const siteMapBlock = `\n\n## 整站頁面地圖（深度探索結果）
+以下是 AI 自動探索發現的 ${state.siteMap.length} 個頁面，請根據頁面地圖產出**跨頁面的使用者旅程測試**：
+
+${mapSummary}
+
+**重要：測試案例應包含跨頁面的流程（如：從列表頁點擊物件→驗證詳情頁內容→返回列表），而非只測試起始頁。每個已發現的重要頁面至少要有一個測試案例涵蓋。**`;
+        discussionText = (discussionText || '') + siteMapBlock;
+      }
+
+      // 領域知識（AI Skills）— 獨立預算 4000 chars
+      let skillsContent: string | undefined;
       const projectSkills = state.projectId ? skillService.getProjectSkills(state.projectId) : [];
       if (projectSkills.length > 0) {
         console.log(`[scan] 使用 ${projectSkills.length} 個 project skill`);
-        const skillsBlock = skillService.formatSkillsForPrompt(projectSkills, 4000);
-        enrichedSpec += '\n\n' + skillsBlock;
+        skillsContent = skillService.formatSkillsForPrompt(projectSkills, 4000);
       } else {
-        // fallback 到 global skill 篩選
         try {
           const relevantSkills = await skillService.selectRelevant(pageInfo.url, pageInfo.title);
           if (relevantSkills.length > 0) {
             console.log(`[scan] 篩選出 ${relevantSkills.length} 個相關 skill: ${relevantSkills.map(s => s.name).join(', ')}`);
-            const skillsBlock = skillService.formatSkillsForPrompt(relevantSkills, 4000);
-            enrichedSpec += '\n\n' + skillsBlock;
+            skillsContent = skillService.formatSkillsForPrompt(relevantSkills, 4000);
           }
         } catch (err) {
           console.error('[scan] skill 篩選失敗:', err);
         }
       }
 
-      // 如果有深度探索的頁面地圖，注入上下文
-      if (state.siteMap && state.siteMap.length > 1) {
-        const mapSummary = state.siteMap.map((p, i) =>
-          `${i + 1}. [${p.pageType}] ${p.title} (${p.url})${p.fromLinkText ? ` ← 從「${p.fromLinkText}」進入` : ''}\n   元件: ${p.components.map(c => `<${c.tag}>${c.text}`).join(', ')}`
-        ).join('\n');
-        enrichedSpec += `\n\n## 整站頁面地圖（深度探索結果）
-以下是 AI 自動探索發現的 ${state.siteMap.length} 個頁面，請根據頁面地圖產出**跨頁面的使用者旅程測試**：
-
-${mapSummary}
-
-**重要：測試案例應包含跨頁面的流程（如：從列表頁點擊物件→驗證詳情頁內容→返回列表），而非只測試起始頁。每個已發現的重要頁面至少要有一個測試案例涵蓋。**
-`;
+      // Fix 5: 從 DB 取得規格書原始文字（比 AI 大綱更可信）
+      let rawSpecText: string | undefined;
+      if (state.projectId) {
+        try {
+          const db = getDb();
+          const specRow = db.prepare(
+            'SELECT raw_text FROM specifications WHERE project_id = ? ORDER BY version DESC LIMIT 1'
+          ).get(state.projectId) as any;
+          rawSpecText = specRow?.raw_text || undefined;
+        } catch (err) {
+          console.error('[scan] raw_text 取得失敗:', err);
+        }
       }
 
-      console.log(`[scan] enrichedSpec length: ${enrichedSpec.length}, specContent: ${(state.specContent || '').length}, has discussion: ${!!(state.discussion?.length)}, has siteMap: ${!!(state.siteMap?.length)}`);
+      console.log(`[scan] spec: ${(pureSpec || '').length}, rawSpec: ${(rawSpecText || '').length}, discussion: ${(discussionText || '').length}, skills: ${(skillsContent || '').length}, has siteMap: ${!!(state.siteMap?.length)}`);
 
       const scanResult = await pageScannerService.scanPage(
         screenshot,
         elements,
         pageInfo,
-        enrichedSpec || undefined,
+        pureSpec,
         state.behaviors,
-        domTree
+        domTree,
+        discussionText,
+        skillsContent,
+        rawSpecText
       );
 
       state.scanResult = scanResult;
+
+      // Fix 4: 規格書覆蓋率後驗證
+      if (pureSpec && scanResult.testPlan.length > 0) {
+        try {
+          const uncovered = await testOrchestrator.verifySpecCoverage(pureSpec, scanResult.testPlan);
+          if (uncovered.length > 0) {
+            console.warn(`[scan] 未覆蓋的規格書章節: ${uncovered.join(', ')}`);
+            (scanResult as any).specCoverageWarnings = uncovered;
+          }
+        } catch (err) {
+          console.error('[scan] 規格書覆蓋率驗證失敗:', err);
+        }
+      }
 
       // 測試計畫版控：存版本記錄
       if (state.projectId) {
@@ -398,7 +430,11 @@ ${mapSummary}
       state.status = 'ready';
       broadcastStatus(state);
 
-      return { components: scanResult.components, testPlan: scanResult.testPlan };
+      return {
+        components: scanResult.components,
+        testPlan: scanResult.testPlan,
+        specCoverageWarnings: (scanResult as any).specCoverageWarnings,
+      };
     } catch (err: any) {
       console.error(`[scan] 錯誤:`, err);
       state.status = 'ready';

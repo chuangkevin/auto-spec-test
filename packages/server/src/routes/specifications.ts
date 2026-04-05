@@ -160,10 +160,10 @@ export default async function specificationRoutes(fastify: FastifyInstance) {
           .send({ error: `AI 解析失敗: ${err.message}` });
       }
 
-      // Update specification with parsed outline
+      // Update specification with parsed outline and raw text
       db.prepare(
-        'UPDATE specifications SET parsed_outline_md = ? WHERE id = ?'
-      ).run(outlineMd, specId);
+        'UPDATE specifications SET parsed_outline_md = ?, raw_text = ? WHERE id = ?'
+      ).run(outlineMd, rawText, specId);
 
       // 非同步觸發 project skill 生成
       if (outlineMd && outlineMd.length >= 500) {
