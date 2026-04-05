@@ -253,7 +253,6 @@ ${failedSummary}
       };
     }
   }
-}
 
   /**
    * Fix 4: 驗證測試計畫對規格書的覆蓋率
@@ -263,7 +262,7 @@ ${failedSummary}
     if (!specContent || testPlan.length === 0) return [];
 
     const tcSummary = testPlan
-      .map(tc => `${tc.id} [${tc.category}] ${tc.name}: ${tc.expectedResult || ''}`)
+      .map((tc: any) => `${tc.id} [${tc.category}] ${tc.name}: ${tc.expectedResult || ''}`)
       .join('\n');
 
     const prompt = `你是 QA Lead。請分析以下規格書和測試計畫，找出規格書中哪些 ## 功能模組沒有對應的測試案例。
