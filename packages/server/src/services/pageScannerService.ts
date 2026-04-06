@@ -96,11 +96,14 @@ async function callGeminiVision(
 
       if (!res.ok) {
         const errText = await res.text();
-        if (res.status === 429 && attempt < MAX_RETRIES) {
-          console.warn(`[pageScannerService] 429 on key ...${apiKey!.slice(-4)}, 重試中...`);
-          await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
-          const nextKey = getGeminiApiKeyExcluding(apiKey!);
-          if (nextKey) apiKey = nextKey;
+        const isRetryable = (res.status === 429 || res.status === 503) && attempt < MAX_RETRIES;
+        if (isRetryable) {
+          console.warn(`[pageScannerService] ${res.status} on key ...${apiKey!.slice(-4)}, 重試中 (${attempt + 1}/${MAX_RETRIES})...`);
+          await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
+          if (res.status === 429) {
+            const nextKey = getGeminiApiKeyExcluding(apiKey!);
+            if (nextKey) apiKey = nextKey;
+          }
           continue;
         }
         throw new Error(`Gemini API 錯誤 (${res.status}): ${errText}`);
@@ -127,10 +130,14 @@ async function callGeminiVision(
     } catch (err: any) {
       const msg = err?.message || '';
       const is429 = msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED');
-      if (is429 && attempt < MAX_RETRIES) {
-        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
-        const nextKey = getGeminiApiKeyExcluding(apiKey!);
-        if (nextKey) apiKey = nextKey;
+      const is503 = msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('high demand');
+      if ((is429 || is503) && attempt < MAX_RETRIES) {
+        console.warn(`[pageScannerService] ${is503 ? '503' : '429'} caught in exception, 重試中 (${attempt + 1}/${MAX_RETRIES})...`);
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
+        if (is429) {
+          const nextKey = getGeminiApiKeyExcluding(apiKey!);
+          if (nextKey) apiKey = nextKey;
+        }
         continue;
       }
       throw err;
