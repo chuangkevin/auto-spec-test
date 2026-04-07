@@ -26,7 +26,10 @@ class BrowserService {
   /** 啟動瀏覽器（lazy init） */
   async ensureBrowser(): Promise<Browser> {
     if (!this.browser || !this.browser.isConnected()) {
-      this.browser = await chromium.launch({ headless: true });
+      this.browser = await chromium.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
     }
     return this.browser;
   }

@@ -111,6 +111,7 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
       await browserService.createSession(sessionId, activeIds);
       await browserService.navigateTo(sessionId, url);
     } catch (err: any) {
+      request.log.error({ err, sessionId, url }, 'Test Start Error');
       await browserService.closeSession(sessionId);
       return reply.status(500).send({ error: `無法開啟頁面: ${err.message}` });
     }
