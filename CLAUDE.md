@@ -109,10 +109,16 @@ docker compose up -d
 
 Data volume: `./data:/app/packages/server/data` (SQLite db lives here).
 
-### CI/CD (GitHub Actions)
+### CI/CD (GitHub & Gitea)
 
-1. **`docker-publish.yml`** — triggers on push to `main` (watches `packages/`, `Dockerfile`, `nginx.conf`, `docker-entrypoint.sh`). Builds `linux/arm64` and pushes to Docker Hub.
-2. **`deploy.yml`** — runs after publish succeeds. SSH via Tailscale to pull and restart the container.
+- **GitHub Actions**:
+  - `docker-publish.yml`: 推送 Docker Hub (`kevin950805/auto-spec-test`)。
+  - `deploy.yml`: 透過 Tailscale SSH 部署。
+- **Gitea Actions**:
+  - `docker-build.yaml`: 推送內部 Registry 並同步 ArgoCD。
+- **Network Compatibility**: `package.json` 指向 GitHub。Gitea CI 透過 `INTERNAL_GIT_MIRROR` (ARG) 使用 Git `insteadOf` 重導向至內網鏡像。
+- **Docker build**: Gitea Runner 需加 `--network=host`。
+- **Cleanup**: 部署前需清理 `auto-spec-test` 與舊的 `autospectest` 容器避免命名衝突。
 
 ### Environment Variables
 

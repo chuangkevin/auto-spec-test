@@ -91,7 +91,7 @@ jobs:
             docker compose -f docker-compose.yml down --remove-orphans --timeout 30 || true
 
             echo "🧹 Force removing any leftover containers..."
-            docker rm -f auto-spec-test 2>/dev/null || true
+            docker rm -f auto-spec-test autospectest 2>/dev/null || true
             sleep 3
 
             echo "🚀 Starting updated containers..."

@@ -3,8 +3,15 @@ FROM node:24 AS builder
 # node:24 (non-slim) 已內建 python3, make, g++，不需要 apt-get
 # Must match Node version in playwright image (v1.58.2 uses Node 24)
 
+ARG INTERNAL_GIT_MIRROR=""
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends git curl && rm -rf /var/lib/apt/lists/*
+
+# Configure git redirect if internal mirror is provided
+RUN if [ -n "$INTERNAL_GIT_MIRROR" ]; then \
+      git config --global url."${INTERNAL_GIT_MIRROR}".insteadOf "https://github.com/kevinsisi/"; \
+    fi
+
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # Install dependencies (layer cache)
