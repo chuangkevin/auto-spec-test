@@ -31,3 +31,6 @@ Thumbs.db
 
 # Test
 coverage/
+
+# Claude Code worktree residuals
+.claude/
