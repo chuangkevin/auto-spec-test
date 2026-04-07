@@ -189,7 +189,12 @@ class BrowserService {
   /** 導航到 URL */
   async navigateTo(sessionId: string, url: string): Promise<void> {
     const { page } = this.getSession(sessionId);
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+    try {
+      await page.goto(url, { waitUntil: 'networkidle', timeout: 15000 });
+    } catch {
+      // networkidle 可能因持續的 analytics/websocket 連線而 timeout，改用 load
+      await page.goto(url, { waitUntil: 'load', timeout: 30000 });
+    }
   }
 
   /** 截圖（回傳 base64） */
