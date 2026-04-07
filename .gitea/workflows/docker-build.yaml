@@ -20,7 +20,7 @@ jobs:
       - name: Build Docker Image
         run: |
           echo "Building image with tag: $IMAGE_TAG and latest"
-          docker build \
+          docker build --network=host \
             -t srvhpgit1:32050/auto-spec-test:$IMAGE_TAG \
             -t srvhpgit1:32050/auto-spec-test:latest .
 
