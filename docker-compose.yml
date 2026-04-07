@@ -8,6 +8,7 @@ services:
     volumes:
       - ./data:/app/packages/server/data
     environment:
+      - TZ=Asia/Taipei
       - NODE_ENV=production
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
