@@ -14,13 +14,13 @@ RUN if [ -n "$INTERNAL_GIT_MIRROR" ]; then \
       git config --global url."${INTERNAL_GIT_MIRROR}".insteadOf "https://github.com/chuangkevin/"; \
     fi
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 # Install dependencies (layer cache)
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 COPY packages/server/package.json packages/server/
 COPY packages/web/package.json packages/web/
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --reporter=append-only
 
 # Copy source
 COPY packages/server packages/server
