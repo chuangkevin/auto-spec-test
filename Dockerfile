@@ -10,12 +10,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends git curl && rm 
 # Configure git redirect if internal mirror is provided
 RUN if [ -n "$INTERNAL_GIT_MIRROR" ]; then \
       git config --global url."${INTERNAL_GIT_MIRROR}".insteadOf "https://github.com/kevinsisi/"; \
+      git config --global url."${INTERNAL_GIT_MIRROR}".insteadOf "https://github.com/H1114/"; \
+      git config --global url."${INTERNAL_GIT_MIRROR}".insteadOf "https://github.com/chuangkevin/"; \
     fi
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # Install dependencies (layer cache)
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 COPY packages/server/package.json packages/server/
 COPY packages/web/package.json packages/web/
 RUN pnpm install --frozen-lockfile
