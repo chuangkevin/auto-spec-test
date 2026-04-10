@@ -12,9 +12,16 @@
 
 - [x] 3.1 新增共用 helper 組 Evidence Hierarchy Block
 - [x] 3.2 在 `pageScannerService.scanPage()` prompt 中注入 evidence hierarchy 與標準化來源段落
+- [x] 3.3 在 judge prompt 中注入 judge 專用 evidence hierarchy
+- [x] 3.4 在 `dream()` prompt 中注入 learning 專用 evidence hierarchy
 
-## 4. Verification
+## 4. Judge / Dream Contract
 
-- [x] 4.1 跑 backend build 或型別檢查，確認新增欄位與 helper 不破壞既有流程
-- [x] 4.2 跑 server test，確認既有單元測試未被破壞
-- [x] 4.3 針對新增 helper / formatter 補單元測試
+- [x] 4.1 讓 judge prompt 明確標示依據步驟記錄與最終頁面觀察判定
+- [x] 4.2 讓 `dream()` 回傳結構化 learnings，含 `evidenceBasis` 與安全 fallback
+
+## 5. Verification
+
+- [x] 5.1 跑 backend build 或型別檢查，確認新增欄位與 helper 不破壞既有流程
+- [x] 5.2 跑 server test，確認既有單元測試未被破壞
+- [x] 5.3 針對新增 helper / formatter 補單元測試

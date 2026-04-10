@@ -1,5 +1,5 @@
 import { getGeminiApiKey, getGeminiApiKeyExcluding, getGeminiModel, trackUsage } from './geminiKeys.js';
-import { buildEvidenceHierarchyBlock } from './agentEvidenceService.js';
+import { buildEvidenceHierarchyBlock, buildJudgeEvidenceBlock } from './agentEvidenceService.js';
 // skillService not imported here — skill injection happens in testRunner.ts scan flow
 
 const MAX_RETRIES = 2;
@@ -515,6 +515,8 @@ ${behaviorsSummary}
 - 預期結果: ${testCase.expectedResult}
 ${stepsContext}${skillContext}
 
+${buildJudgeEvidenceBlock()}
+
 ## 領域知識使用原則（Skeptical Memory）
 以下領域知識僅供參考，不代表絕對正確：
 1. **以截圖實際觀察為最終依據**，不要因為領域知識說「應該有 X」就判定沒有 X 是 bug
@@ -576,6 +578,9 @@ ${stepsContext}${skillContext}
 - 名稱: ${testCase.name}
 - 預期結果: ${testCase.expectedResult}
 ${stepsContext}
+
+${buildJudgeEvidenceBlock()}
+
 ## 兩位裁判的判定
 裁判A（嚴格）判定：${judgeA.passed ? 'PASS' : 'FAIL'} — ${judgeA.actualResult}
 裁判B（寬鬆）判定：${judgeB.passed ? 'PASS' : 'FAIL'} — ${judgeB.actualResult}

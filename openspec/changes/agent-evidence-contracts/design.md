@@ -11,6 +11,7 @@
 **Goals**
 - 為討論 Agent 建立輕量但明確的輸出 contract
 - 在 scanPage 階段建立統一的 evidence hierarchy prompt block
+- 讓 judge / dream 也使用一致的 evidence ordering 與結構化輸出
 - 保持現有前端顯示與 API 基本相容
 
 **Non-Goals**
@@ -49,6 +50,15 @@
 - 各 agent 的 evidence basis
 
 這讓 scanPage prompt 可以直接要求「每個 focus area 至少對應一個 TC」，而不是只靠自然語言暗示。
+
+### D4: Judge 與 Dream 使用角色化 evidence block
+
+不同 agent 雖然共享 evidence-first 原則，但依據來源不同：
+
+- `Judge`: 以步驟執行記錄與最終頁面觀察為主，不重新注入 skills
+- `Dream`: 以失敗案例摘要與現有 project skills 為主，僅把 skills 視為可更新目標，不視為真理
+
+因此使用同一套 evidence hierarchy 精神，但由 helper 依角色輸出不同說明文字，避免 prompt 漂移。
 
 ## Risks / Trade-offs
 

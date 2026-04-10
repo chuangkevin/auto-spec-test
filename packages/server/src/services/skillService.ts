@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../db/connection.js';
+import { buildLearningEvidenceBlock } from './agentEvidenceService.js';
 import { getGeminiApiKey, getGeminiModel, trackUsage } from './geminiKeys.js';
 
 export interface AgentSkill {
@@ -13,6 +14,14 @@ export interface AgentSkill {
   verified?: number;
   created_at: string;
   updated_at: string;
+}
+
+interface DreamLearning {
+  caseId: string;
+  category: 'selector_issue' | 'url_format_issue' | 'spec_mismatch' | 'real_bug';
+  skillToUpdate: string | null;
+  suggestion: string;
+  evidenceBasis?: string[];
 }
 
 class SkillService {
@@ -358,6 +367,8 @@ ${failedSummary}
 
 可用的 Project Skills: ${skillNames}
 
+${buildLearningEvidenceBlock(projectSkills.map((s) => s.name))}
+
 請對每個失敗案例分類：
 - selector_issue: selector 找不到或 timeout → 建議修正
 - url_format_issue: URL 格式錯誤 → 建議正確格式
@@ -365,7 +376,7 @@ ${failedSummary}
 - real_bug: 真正的頁面 bug → 不需要修改 skill
 
 只回傳 JSON:
-{ "learnings": [{ "caseId": "TC-001", "category": "selector_issue|url_format_issue|spec_mismatch|real_bug", "skillToUpdate": "skill-name-or-null", "suggestion": "建議內容（50字內）" }] }`;
+{ "learnings": [{ "caseId": "TC-001", "category": "selector_issue|url_format_issue|spec_mismatch|real_bug", "skillToUpdate": "skill-name-or-null", "suggestion": "建議內容（50字內）", "evidenceBasis": ["actualResult", "error", "current skill"] }] }`;
 
     try {
       const res = await fetch(url, {
@@ -384,7 +395,30 @@ ${failedSummary}
       if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
 
       const parsed = JSON.parse(cleaned);
-      const learnings = parsed.learnings || [];
+      const learnings = Array.isArray(parsed.learnings)
+        ? parsed.learnings
+            .map((learning: any): DreamLearning | null => {
+              const caseId = String(learning?.caseId || '').trim();
+              const category = String(learning?.category || '').trim() as DreamLearning['category'];
+              const suggestion = String(learning?.suggestion || '').trim();
+              const skillToUpdate = learning?.skillToUpdate ? String(learning.skillToUpdate).trim() : null;
+              const evidenceBasis = Array.isArray(learning?.evidenceBasis)
+                ? learning.evidenceBasis.map((item: unknown) => String(item || '').trim()).filter(Boolean).slice(0, 4)
+                : [];
+
+              if (!caseId || !suggestion) return null;
+              if (!['selector_issue', 'url_format_issue', 'spec_mismatch', 'real_bug'].includes(category)) return null;
+
+              return {
+                caseId,
+                category,
+                skillToUpdate,
+                suggestion,
+                evidenceBasis,
+              };
+            })
+            .filter(Boolean) as DreamLearning[]
+        : [];
 
       // 自動 append 學習到的資訊到 skill
       const db = getDb();
@@ -395,7 +429,10 @@ ${failedSummary}
         const skill = projectSkills.find(s => s.name === learning.skillToUpdate);
         if (!skill) continue;
 
-        const appendText = `\n\n---\n**[自動學習 ${new Date().toISOString().slice(0, 10)}]** ${learning.category}: ${learning.suggestion}`;
+        const evidenceText = learning.evidenceBasis && learning.evidenceBasis.length > 0
+          ? ` [依據: ${learning.evidenceBasis.join(' / ')}]`
+          : '';
+        const appendText = `\n\n---\n**[自動學習 ${new Date().toISOString().slice(0, 10)}]** ${learning.category}: ${learning.suggestion}${evidenceText}`;
         db.prepare('UPDATE agent_skills SET content = content || ?, updated_at = datetime(\'now\') WHERE id = ?')
           .run(appendText, skill.id);
       }

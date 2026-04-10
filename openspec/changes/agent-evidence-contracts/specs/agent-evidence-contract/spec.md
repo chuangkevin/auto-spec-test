@@ -28,3 +28,21 @@ scan/test generation 階段 SHALL 明確遵守 evidence hierarchy，而非把所
 #### Scenario: focus area 被強制覆蓋
 - **WHEN** discussion 聚合出某個 focus area（如「權限控制」）
 - **THEN** scan prompt SHALL 要求至少一個測試案例對應該 focus area；若找不到對應 DOM 功能，則以缺失案例標記
+
+### Requirement: Judge 遵守 evidence-first 評判順序
+judge 階段 SHALL 使用一致的 evidence ordering，優先依據步驟執行記錄與最終頁面觀察，而非重複相信上游的 skill 或 discussion。
+
+#### Scenario: judge 遇到上游建議與執行證據衝突
+- **WHEN** 測試生成階段的假設與實際步驟執行記錄或截圖衝突
+- **THEN** judge SHALL 以步驟執行記錄與最終頁面觀察為準，不得因上游建議而強行判定
+
+### Requirement: Dream 以失敗證據與現有 skills 做結構化學習
+dream 階段 SHALL 將失敗案例與可更新的 project skills 視為不同層級的證據，並回傳結構化 learning 結果。
+
+#### Scenario: real bug 不應污染 skill
+- **WHEN** dream 判定失敗案例屬於 `real_bug`
+- **THEN** SHALL 保留 learning 記錄，但不得更新任何 skill
+
+#### Scenario: learning 缺少完整欄位時降級
+- **WHEN** dream 沒有回傳完整 learning 欄位
+- **THEN** 系統 SHALL 忽略不完整項目或使用安全 fallback，而不是寫入模糊 skill 更新

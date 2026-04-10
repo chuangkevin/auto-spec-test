@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildEvidenceHierarchyBlock } from '../agentEvidenceService.js';
+import { buildEvidenceHierarchyBlock, buildJudgeEvidenceBlock, buildLearningEvidenceBlock } from '../agentEvidenceService.js';
 import { TestOrchestrator } from '../testOrchestrator.js';
 
 describe('agentEvidenceService', () => {
@@ -49,5 +49,22 @@ describe('agentEvidenceService', () => {
     expect(prompt).toContain('各 Agent 主要證據依據');
     expect(prompt).toContain('Echo: 規格書、截圖');
     expect(prompt).toContain('Lisa: DOM');
+  });
+
+  it('buildJudgeEvidenceBlock prefers execution record and final observation', () => {
+    const block = buildJudgeEvidenceBlock();
+
+    expect(block).toContain('Evidence Hierarchy（Judge）');
+    expect(block).toContain('1. **Step execution record**');
+    expect(block).toContain('2. **Final page observation**');
+  });
+
+  it('buildLearningEvidenceBlock prefers failed evidence over current skills', () => {
+    const block = buildLearningEvidenceBlock(['url-format-rules', 'selector-rules']);
+
+    expect(block).toContain('Evidence Hierarchy（Dream Learning）');
+    expect(block).toContain('1. **Failed test evidence**');
+    expect(block).toContain('2. **Current project skills**');
+    expect(block).toContain('url-format-rules, selector-rules');
   });
 });
