@@ -46,3 +46,14 @@ dream 階段 SHALL 將失敗案例與可更新的 project skills 視為不同層
 #### Scenario: learning 缺少完整欄位時降級
 - **WHEN** dream 沒有回傳完整 learning 欄位
 - **THEN** 系統 SHALL 忽略不完整項目或使用安全 fallback，而不是寫入模糊 skill 更新
+
+### Requirement: Test result 與 report 保留 evidence provenance
+測試執行完成後，系統 SHALL 保存每個案例的主要判定依據，並在 API 與報告中可讀取。
+
+#### Scenario: latest run API 回傳判定依據
+- **WHEN** 使用者讀取最新測試結果
+- **THEN** 每個案例結果 SHALL 包含 `evidenceProvenance` 欄位，顯示判定主要依據
+
+#### Scenario: Markdown report 顯示判定依據
+- **WHEN** 系統生成測試報告
+- **THEN** failed case 與詳細結果 SHOULD 顯示「判定依據」，避免只有結論沒有來源

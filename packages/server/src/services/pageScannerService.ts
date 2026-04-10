@@ -46,6 +46,7 @@ interface ScanResult {
 interface TestCaseResult {
   passed: boolean;
   actualResult: string;
+  evidenceProvenance?: string[];
   screenshot?: string;
   error?: string;
 }
@@ -473,6 +474,7 @@ ${behaviorsSummary}
       return {
         passed: judgeA.passed,
         actualResult: `[多Agent一致] ${judgeA.actualResult}`,
+        evidenceProvenance: ['judge:step_execution_record', 'judge:final_page_observation', 'judge:test_case_expectation', 'judge:multi_agent_consensus'],
       };
     }
 
@@ -481,6 +483,7 @@ ${behaviorsSummary}
     return {
       passed: judgeC.passed,
       actualResult: `[仲裁決定] ${judgeC.actualResult}\n裁判A(嚴格): ${judgeA.passed ? 'PASS' : 'FAIL'} - ${judgeA.actualResult}\n裁判B(寬鬆): ${judgeB.passed ? 'PASS' : 'FAIL'} - ${judgeB.actualResult}`,
+      evidenceProvenance: ['judge:step_execution_record', 'judge:final_page_observation', 'judge:test_case_expectation', 'judge:arbitration'],
     };
   }
 

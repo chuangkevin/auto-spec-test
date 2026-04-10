@@ -20,8 +20,14 @@
 - [x] 4.1 讓 judge prompt 明確標示依據步驟記錄與最終頁面觀察判定
 - [x] 4.2 讓 `dream()` 回傳結構化 learnings，含 `evidenceBasis` 與安全 fallback
 
-## 5. Verification
+## 5. Result Provenance
 
-- [x] 5.1 跑 backend build 或型別檢查，確認新增欄位與 helper 不破壞既有流程
-- [x] 5.2 跑 server test，確認既有單元測試未被破壞
-- [x] 5.3 針對新增 helper / formatter 補單元測試
+- [x] 5.1 在 `test_case_results` 保存 `evidence_provenance`
+- [x] 5.2 latest test run API 回傳 `evidenceProvenance`
+- [x] 5.3 Markdown report 顯示判定依據
+
+## 6. Verification
+
+- [x] 6.1 跑 backend build 或型別檢查，確認新增欄位與 helper 不破壞既有流程
+- [x] 6.2 跑 server test，確認既有單元測試未被破壞
+- [x] 6.3 針對新增 helper / formatter 補單元測試

@@ -856,7 +856,7 @@ ${mapSummary}
 
     const results = db
       .prepare(
-        'SELECT id, case_id, name, status, expected_result, actual_result, screenshot, error, started_at, completed_at FROM test_case_results WHERE test_run_id = ? ORDER BY id ASC'
+        'SELECT id, case_id, name, status, expected_result, actual_result, evidence_provenance, screenshot, error, started_at, completed_at FROM test_case_results WHERE test_run_id = ? ORDER BY id ASC'
       )
       .all(run.id) as any[];
 
@@ -880,6 +880,7 @@ ${mapSummary}
         name: r.name,
         status: r.status,
         actualResult: r.actual_result,
+        evidenceProvenance: r.evidence_provenance ? JSON.parse(r.evidence_provenance) : [],
         expectedResult: r.expected_result,
         screenshot: r.screenshot,
         error: r.error,
@@ -1233,11 +1234,12 @@ async function executeTests(
   // autoDream: 測試完成後學習
   if (failedCount > 0 && state.projectId) {
     const allResults = db.prepare(
-      'SELECT case_id as caseId, name, status, actual_result as actualResult, error FROM test_case_results WHERE test_run_id = ?'
+      'SELECT case_id as caseId, name, status, actual_result as actualResult, error, evidence_provenance as evidenceProvenance FROM test_case_results WHERE test_run_id = ?'
     ).all(testRunId) as any[];
     skillService.dream(state.projectId, allResults.map((r: any) => ({
       caseId: r.caseId, name: r.name, passed: r.status === 'passed',
       actualResult: r.actualResult || '', error: r.error || undefined,
+      evidenceProvenance: r.evidenceProvenance ? JSON.parse(r.evidenceProvenance) : [],
     }))).catch(err => console.error('[testRunner] dream 失敗:', err));
   }
 

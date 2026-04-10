@@ -24,6 +24,7 @@ interface TestCaseResultRow {
   steps: string | null;
   expected_result: string | null;
   actual_result: string | null;
+  evidence_provenance: string | null;
   screenshot: string | null;
   error: string | null;
   started_at: string | null;
@@ -141,6 +142,16 @@ export class ReportService {
         if (r.actual_result) {
           lines.push(`- **實際結果**：${r.actual_result}`);
         }
+        if (r.evidence_provenance) {
+          try {
+            const provenance = JSON.parse(r.evidence_provenance) as string[];
+            if (provenance.length > 0) {
+              lines.push(`- **判定依據**：${provenance.join('、')}`);
+            }
+          } catch {
+            // ignore invalid provenance json
+          }
+        }
         if (r.error) {
           lines.push(`- **錯誤訊息**：${r.error}`);
         }
@@ -184,6 +195,16 @@ export class ReportService {
       if (r.status === 'failed') {
         if (r.actual_result) {
           lines.push(`- 實際結果：${r.actual_result}`);
+        }
+        if (r.evidence_provenance) {
+          try {
+            const provenance = JSON.parse(r.evidence_provenance) as string[];
+            if (provenance.length > 0) {
+              lines.push(`- 判定依據：${provenance.join('、')}`);
+            }
+          } catch {
+            // ignore invalid provenance json
+          }
         }
         if (r.error) {
           lines.push(`- 錯誤訊息：${r.error}`);

@@ -17,7 +17,7 @@
 **Non-Goals**
 - 不導入完整 capability registry 或權限型 subagent runtime
 - 不重做 dream / judge 的整體架構
-- 不新增 DB schema
+- 不做大型資料模型重構；只接受保存 provenance 所需的最小 schema 擴充
 
 ## Decisions
 
@@ -59,6 +59,14 @@
 - `Dream`: 以失敗案例摘要與現有 project skills 為主，僅把 skills 視為可更新目標，不視為真理
 
 因此使用同一套 evidence hierarchy 精神，但由 helper 依角色輸出不同說明文字，避免 prompt 漂移。
+
+### D5: Provenance 落在 test_case_results 與報告層
+
+執行後如果沒有保存判定依據，evidence-first 只會停留在 prompt 規則，無法被後續 API、報告與 dream 重用。因此 `test_case_results` 額外保存 `evidence_provenance`，供：
+
+- latest test run API 顯示結果依據
+- Markdown report 顯示「判定依據」
+- dream 在學習失敗案例時讀到上一輪判定主要依據
 
 ## Risks / Trade-offs
 

@@ -341,7 +341,7 @@ ${specContent}
     return this.formatSkillsForPrompt(skills, maxContentLength);
   }
 
-  async dream(projectId: number, testResults: Array<{ caseId: string; name: string; passed: boolean; actualResult: string; error?: string }>): Promise<void> {
+  async dream(projectId: number, testResults: Array<{ caseId: string; name: string; passed: boolean; actualResult: string; error?: string; evidenceProvenance?: string[] }>): Promise<void> {
     const failed = testResults.filter(r => !r.passed);
     if (failed.length === 0) return;
 
@@ -355,7 +355,7 @@ ${specContent}
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const failedSummary = failed.map(r =>
-      `${r.caseId} ${r.name}: ${(r.actualResult || '').slice(0, 200)}${r.error ? ` [Error: ${r.error.slice(0, 100)}]` : ''}`
+      `${r.caseId} ${r.name}: ${(r.actualResult || '').slice(0, 200)}${r.error ? ` [Error: ${r.error.slice(0, 100)}]` : ''}${r.evidenceProvenance && r.evidenceProvenance.length > 0 ? ` [Evidence: ${r.evidenceProvenance.join(', ')}]` : ''}`
     ).join('\n');
 
     const skillNames = projectSkills.map(s => s.name).join(', ');
