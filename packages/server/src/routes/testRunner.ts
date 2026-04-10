@@ -35,10 +35,57 @@ interface RunnerState {
   siteMap?: Array<{ url: string; title: string; pageType: string; components: any[]; depth: number; fromUrl?: string; fromLinkText?: string }>;
   /** WebSocket 訊息發送函式 */
   broadcast?: (msg: any) => void;
+  agentTimeline: AgentStage[];
+}
+
+type AgentStageKey = 'explore' | 'discuss' | 'scan' | 'execute' | 'judge' | 'review' | 'dream';
+type AgentStageState = 'pending' | 'running' | 'completed' | 'warning' | 'failed' | 'skipped';
+
+interface AgentStage {
+  key: AgentStageKey;
+  label: string;
+  state: AgentStageState;
+  summary?: string;
+  evidenceSources?: string[];
+  usedFallback?: boolean;
+  disagreement?: boolean;
+  updatedAt?: string;
 }
 
 /** 全域 runner 狀態 */
 export const runnerStates = new Map<string, RunnerState>();
+
+function createDefaultAgentTimeline(): AgentStage[] {
+  return [
+    { key: 'explore', label: 'Explore', state: 'pending' },
+    { key: 'discuss', label: 'Discuss', state: 'pending' },
+    { key: 'scan', label: 'Scan', state: 'pending' },
+    { key: 'execute', label: 'Execute', state: 'pending' },
+    { key: 'judge', label: 'Judge', state: 'pending' },
+    { key: 'review', label: 'Review', state: 'pending' },
+    { key: 'dream', label: 'Dream', state: 'pending' },
+  ];
+}
+
+function persistAgentTimeline(state: RunnerState): void {
+  if (!state.testRunId) return;
+  getDb().prepare('UPDATE test_runs SET agent_timeline = ? WHERE id = ?')
+    .run(JSON.stringify(state.agentTimeline), state.testRunId);
+}
+
+function broadcastAgentTimeline(state: RunnerState): void {
+  if (state.broadcast) {
+    state.broadcast({ type: 'agent-status', data: { timeline: state.agentTimeline } });
+  }
+}
+
+function updateAgentStage(state: RunnerState, key: AgentStageKey, patch: Partial<AgentStage>): void {
+  state.agentTimeline = state.agentTimeline.map((stage) =>
+    stage.key === key ? { ...stage, ...patch, updatedAt: new Date().toISOString() } : stage
+  );
+  persistAgentTimeline(state);
+  broadcastAgentTimeline(state);
+}
 
 export default async function testRunnerRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook('preHandler', authHook);
@@ -126,6 +173,7 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
       paused: false,
       skipped: false,
       stopped: false,
+      agentTimeline: createDefaultAgentTimeline(),
     };
     runnerStates.set(sessionId, state);
 
@@ -143,6 +191,11 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
     }
 
     try {
+      updateAgentStage(state, 'discuss', {
+        state: 'running',
+        summary: 'AI 團隊正在整理測試重點',
+        evidenceSources: ['live_page_evidence', state.specContent ? 'raw_spec' : 'skills'],
+      });
       const screenshot = await browserService.screenshot(sessionId);
       const pageInfo = await browserService.getPageInfo(sessionId);
       return { screenshot, pageInfo };
@@ -216,12 +269,28 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
     }
 
     try {
+      updateAgentStage(state, 'explore', {
+        state: 'running',
+        summary: 'AI 正在探索頁面元素與子頁面',
+        evidenceSources: ['live_page_evidence'],
+      });
       const result = await explorerService.explorePage(sessionId, state.broadcast);
       // 儲存探索結果到 state，供 scan 使用
       state.behaviors = result.behaviors;
+      updateAgentStage(state, 'explore', {
+        state: 'completed',
+        summary: `探索完成，發現 ${result.behaviors.length} 個有效互動`,
+        evidenceSources: ['live_page_evidence'],
+      });
       return { behaviors: result.behaviors };
     } catch (err: any) {
       console.error(`[explore] 錯誤:`, err);
+      updateAgentStage(state, 'explore', {
+        state: 'warning',
+        summary: `探索失敗但流程可繼續：${err.message}`,
+        evidenceSources: ['live_page_evidence'],
+        usedFallback: true,
+      });
       return reply.status(500).send({ error: err.message });
     }
   });
@@ -237,9 +306,20 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
     try {
       const siteMap = await explorerService.deepExplore(sessionId, state.url, state.broadcast);
       state.siteMap = siteMap;
+      updateAgentStage(state, 'explore', {
+        state: 'completed',
+        summary: `深度探索完成，共發現 ${siteMap.length} 個頁面`,
+        evidenceSources: ['live_page_evidence'],
+      });
       return { siteMap };
     } catch (err: any) {
       console.error(`[deep-explore] 錯誤:`, err);
+      updateAgentStage(state, 'explore', {
+        state: 'warning',
+        summary: `深度探索失敗但保留起始頁流程：${err.message}`,
+        evidenceSources: ['live_page_evidence'],
+        usedFallback: true,
+      });
       return reply.status(500).send({ error: err.message });
     }
   });
@@ -263,8 +343,20 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
       );
 
       state.discussion = discussion;
+      const fallbackCount = discussion.filter((item) => item.fallbackUsed).length;
+      updateAgentStage(state, 'discuss', {
+        state: fallbackCount > 0 ? 'warning' : 'completed',
+        summary: `完成 ${discussion.length} 位 agent 討論，聚合 ${new Set(discussion.flatMap((d) => d.focusAreas || [])).size} 個重點`,
+        evidenceSources: ['live_page_evidence', state.specContent ? 'raw_spec' : 'skills'],
+        usedFallback: fallbackCount > 0,
+      });
       return { discussion };
     } catch (err: any) {
+      updateAgentStage(state, 'discuss', {
+        state: 'failed',
+        summary: err.message,
+        evidenceSources: ['live_page_evidence'],
+      });
       return reply.status(500).send({ error: err.message });
     }
   });
@@ -279,6 +371,11 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
     if (!state.testRunId) return reply.status(400).send({ error: '尚未執行測試' });
 
     try {
+      updateAgentStage(state, 'review', {
+        state: 'running',
+        summary: 'AI 正在辨識真 bug 與測試腳本問題',
+        evidenceSources: ['test_results', 'final_screenshot'],
+      });
       const db = getDb();
       const results = db.prepare(
         'SELECT case_id as caseId, status, actual_result as actualResult, error FROM test_case_results WHERE test_run_id = ?'
@@ -291,8 +388,20 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
         screenshot
       );
 
+      updateAgentStage(state, 'review', {
+        state: review.adjustments?.length > 0 ? 'warning' : 'completed',
+        summary: review.summary,
+        evidenceSources: ['test_results', 'final_screenshot'],
+        usedFallback: review.summary.includes('無法分析'),
+      });
+
       return review;
     } catch (err: any) {
+      updateAgentStage(state, 'review', {
+        state: 'failed',
+        summary: err.message,
+        evidenceSources: ['test_results'],
+      });
       return reply.status(500).send({ error: err.message });
     }
   });
@@ -310,6 +419,11 @@ export default async function testRunnerRoutes(fastify: FastifyInstance): Promis
     try {
       state.status = 'scanning';
       broadcastStatus(state);
+      updateAgentStage(state, 'scan', {
+        state: 'running',
+        summary: 'AI 正在根據頁面與規格產生測試計畫',
+        evidenceSources: ['live_page_evidence', 'raw_spec', 'discussion', 'skills'],
+      });
 
       // 確保回到起始頁面（深度探索後可能在別的頁面）
       try {
@@ -433,6 +547,11 @@ ${mapSummary}
 
       state.status = 'ready';
       broadcastStatus(state);
+      updateAgentStage(state, 'scan', {
+        state: (scanResult as any).specCoverageWarnings?.length > 0 ? 'warning' : 'completed',
+        summary: `產生 ${scanResult.testPlan.length} 個測試案例${(scanResult as any).specCoverageWarnings?.length ? `，${(scanResult as any).specCoverageWarnings.length} 個規格章節未覆蓋` : ''}`,
+        evidenceSources: ['live_page_evidence', rawSpecText ? 'raw_spec' : 'parsed_spec', discussionText ? 'discussion' : 'none', skillsContent ? 'skills' : 'none'],
+      });
 
       return {
         components: scanResult.components,
@@ -443,6 +562,11 @@ ${mapSummary}
       console.error(`[scan] 錯誤:`, err);
       state.status = 'ready';
       broadcastStatus(state);
+      updateAgentStage(state, 'scan', {
+        state: 'failed',
+        summary: err.message,
+        evidenceSources: ['live_page_evidence'],
+      });
       return reply.status(500).send({ error: err.message });
     }
   });
@@ -483,6 +607,7 @@ ${mapSummary}
     );
     const testRunId = Number(runResult.lastInsertRowid);
     state.testRunId = testRunId;
+    persistAgentTimeline(state);
 
     // 自動回存 URL 到專案
     if (state.projectId && state.url) {
@@ -845,7 +970,7 @@ ${mapSummary}
 
     const run = db
       .prepare(
-        `SELECT id, project_id, url, status, total_cases, passed_cases, failed_cases, skipped_cases, report, created_at, completed_at
+        `SELECT id, project_id, url, status, total_cases, passed_cases, failed_cases, skipped_cases, report, agent_timeline, created_at, completed_at
          FROM test_runs WHERE project_id = ? ORDER BY created_at DESC LIMIT 1`
       )
       .get(projectId) as Record<string, unknown> | undefined;
@@ -874,6 +999,7 @@ ${mapSummary}
         failed: run.failed_cases,
         skipped: run.skipped_cases,
       },
+      agentTimeline: run.agent_timeline ? JSON.parse(String(run.agent_timeline)) : [],
       results: results.map((r: any) => ({
         id: String(r.id),
         testCaseId: r.case_id,
@@ -935,10 +1061,22 @@ async function executeTests(
   state.paused = false;
   state.currentCaseIndex = 0;
   broadcastStatus(state);
+  updateAgentStage(state, 'execute', {
+    state: 'running',
+    summary: `開始執行 ${testCases.length} 個測試案例`,
+    evidenceSources: ['test_plan', 'browser_runtime'],
+  });
+  updateAgentStage(state, 'judge', {
+    state: 'running',
+    summary: 'AI 正在根據步驟與畫面判定結果',
+    evidenceSources: ['step_execution_record', 'final_page_observation'],
+  });
 
   let passedCount = 0;
   let failedCount = 0;
   let skippedCount = 0;
+  let arbitrationCount = 0;
+  let judgeFallbackCount = 0;
 
   for (let i = 0; i < testCases.length; i++) {
     state.currentCaseIndex = i;
@@ -960,13 +1098,13 @@ async function executeTests(
       if (state.broadcast) {
         state.broadcast({
           type: 'result',
-          data: { testCaseId: tc.id, passed: false, actualResult: '已跳過', skipped: true },
+          data: { testCaseId: tc.id, passed: false, actualResult: '已跳過', skipped: true, evidenceProvenance: ['runner:manual_skip'] },
         });
       }
       db.prepare(
-        `INSERT INTO test_case_results (test_run_id, case_id, name, status, steps, expected_result, actual_result, started_at, completed_at)
-         VALUES (?, ?, ?, 'skipped', ?, ?, '已跳過', datetime('now'), datetime('now'))`
-      ).run(testRunId, tc.id, tc.name, JSON.stringify(tc.steps), tc.expectedResult);
+        `INSERT INTO test_case_results (test_run_id, case_id, name, status, steps, expected_result, actual_result, evidence_provenance, started_at, completed_at)
+         VALUES (?, ?, ?, 'skipped', ?, ?, '已跳過', ?, datetime('now'), datetime('now'))`
+      ).run(testRunId, tc.id, tc.name, JSON.stringify(tc.steps), tc.expectedResult, JSON.stringify(['runner:manual_skip']));
       continue;
     }
 
@@ -1068,13 +1206,13 @@ async function executeTests(
             if (state.broadcast) {
               state.broadcast({
                 type: 'result',
-                data: { testCaseId: tc.id, passed: false, actualResult: skipReason, skipped: true },
+                data: { testCaseId: tc.id, passed: false, actualResult: skipReason, skipped: true, evidenceProvenance: ['runner:login_recovery_failed'] },
               });
             }
             db.prepare(
-              `INSERT INTO test_case_results (test_run_id, case_id, name, status, steps, expected_result, actual_result, started_at, completed_at)
-               VALUES (?, ?, ?, 'skipped', ?, ?, ?, datetime('now'), datetime('now'))`
-            ).run(testRunId, tc.id, tc.name, JSON.stringify(tc.steps), tc.expectedResult, skipReason);
+              `INSERT INTO test_case_results (test_run_id, case_id, name, status, steps, expected_result, actual_result, evidence_provenance, started_at, completed_at)
+               VALUES (?, ?, ?, 'skipped', ?, ?, ?, ?, datetime('now'), datetime('now'))`
+            ).run(testRunId, tc.id, tc.name, JSON.stringify(tc.steps), tc.expectedResult, skipReason, JSON.stringify(['runner:login_recovery_failed']));
             continue;
           }
         }
@@ -1155,10 +1293,16 @@ async function executeTests(
       const pageInfo = await browserService.getPageInfo(state.sessionId);
       const result = await pageScannerService.executeTestCase(tc, screenshot, pageInfo, stepsSummary);
       result.screenshot = screenshot;
+      if (result.judgeMeta?.mode === 'arbitrated') arbitrationCount++;
+      if (result.judgeMeta?.fallbackUsed) judgeFallbackCount++;
 
       // 如果有步驟錯誤，附加到 actualResult
       const errorSummary = stepErrors.length > 0 ? `\n\n執行錯誤：\n${stepErrors.join('\n')}` : '';
       const finalActualResult = (result.actualResult || '') + errorSummary;
+      const finalEvidenceProvenance = Array.from(new Set([
+        ...(result.evidenceProvenance || []),
+        ...(stepErrors.length > 0 ? ['runner:step_execution_error'] : []),
+      ]));
 
       // 如果所有步驟都出錯，直接判定失敗
       const allStepsFailed = stepErrors.length === (tc.steps || []).length;
@@ -1173,8 +1317,8 @@ async function executeTests(
       // 寫入 DB（使用真實的開始/結束時間）
       const caseEndTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
       db.prepare(
-        `INSERT INTO test_case_results (test_run_id, case_id, name, status, steps, expected_result, actual_result, screenshot, error, started_at, completed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO test_case_results (test_run_id, case_id, name, status, steps, expected_result, actual_result, evidence_provenance, screenshot, error, started_at, completed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         testRunId,
         tc.id,
@@ -1183,6 +1327,7 @@ async function executeTests(
         JSON.stringify(tc.steps),
         tc.expectedResult,
         finalActualResult,
+        JSON.stringify(finalEvidenceProvenance),
         result.screenshot || null,
         stepErrors.length > 0 ? stepErrors.join('; ') : (result.error || null),
         caseStartTime,
@@ -1197,6 +1342,7 @@ async function executeTests(
             testCaseId: tc.id,
             passed: finalPassed,
             actualResult: finalActualResult,
+            evidenceProvenance: finalEvidenceProvenance,
             screenshot: result.screenshot,
           },
         });
@@ -1206,14 +1352,14 @@ async function executeTests(
       if (state.broadcast) {
         state.broadcast({
           type: 'result',
-          data: { testCaseId: tc.id, passed: false, actualResult: `執行錯誤: ${err.message}` },
+          data: { testCaseId: tc.id, passed: false, actualResult: `執行錯誤: ${err.message}`, evidenceProvenance: ['runner:execution_exception'] },
         });
       }
       const caseEndTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
       db.prepare(
-        `INSERT INTO test_case_results (test_run_id, case_id, name, status, steps, expected_result, error, started_at, completed_at)
-         VALUES (?, ?, ?, 'failed', ?, ?, ?, ?, ?)`
-      ).run(testRunId, tc.id, tc.name, JSON.stringify(tc.steps), tc.expectedResult, err.message, caseStartTime, caseEndTime);
+        `INSERT INTO test_case_results (test_run_id, case_id, name, status, steps, expected_result, error, evidence_provenance, started_at, completed_at)
+         VALUES (?, ?, ?, 'failed', ?, ?, ?, ?, ?, ?)`
+      ).run(testRunId, tc.id, tc.name, JSON.stringify(tc.steps), tc.expectedResult, err.message, JSON.stringify(['runner:execution_exception']), caseStartTime, caseEndTime);
     }
   }
 
@@ -1222,6 +1368,18 @@ async function executeTests(
     `UPDATE test_runs SET status = 'completed', passed_cases = ?, failed_cases = ?, skipped_cases = ?, completed_at = datetime('now')
      WHERE id = ?`
   ).run(passedCount, failedCount, skippedCount, testRunId);
+  updateAgentStage(state, 'execute', {
+    state: failedCount > 0 ? 'warning' : 'completed',
+    summary: `完成 ${testCases.length} 個案例：通過 ${passedCount} / 失敗 ${failedCount} / 跳過 ${skippedCount}`,
+    evidenceSources: ['test_plan', 'browser_runtime'],
+  });
+  updateAgentStage(state, 'judge', {
+    state: judgeFallbackCount > 0 || arbitrationCount > 0 ? 'warning' : 'completed',
+    summary: `一致判定 ${testCases.length - arbitrationCount} 次，仲裁 ${arbitrationCount} 次${judgeFallbackCount > 0 ? `，fallback ${judgeFallbackCount} 次` : ''}`,
+    evidenceSources: ['step_execution_record', 'final_page_observation'],
+    disagreement: arbitrationCount > 0,
+    usedFallback: judgeFallbackCount > 0,
+  });
 
   // 產出並儲存 Markdown 測試報告
   try {
@@ -1233,6 +1391,11 @@ async function executeTests(
 
   // autoDream: 測試完成後學習
   if (failedCount > 0 && state.projectId) {
+    updateAgentStage(state, 'dream', {
+      state: 'running',
+      summary: 'AI 正在從失敗案例提取 learnings',
+      evidenceSources: ['failed_test_evidence', 'project_skills'],
+    });
     const allResults = db.prepare(
       'SELECT case_id as caseId, name, status, actual_result as actualResult, error, evidence_provenance as evidenceProvenance FROM test_case_results WHERE test_run_id = ?'
     ).all(testRunId) as any[];
@@ -1240,7 +1403,27 @@ async function executeTests(
       caseId: r.caseId, name: r.name, passed: r.status === 'passed',
       actualResult: r.actualResult || '', error: r.error || undefined,
       evidenceProvenance: r.evidenceProvenance ? JSON.parse(r.evidenceProvenance) : [],
-    }))).catch(err => console.error('[testRunner] dream 失敗:', err));
+    }))).then((summary) => {
+      updateAgentStage(state, 'dream', {
+        state: summary.fallbackUsed ? 'warning' : 'completed',
+        summary: `處理 ${summary.processed} 個 learnings，更新 ${summary.updated} 個 skill，real bug ${summary.realBugCount} 個`,
+        evidenceSources: ['failed_test_evidence', 'project_skills'],
+        usedFallback: summary.fallbackUsed,
+      });
+    }).catch(err => {
+      console.error('[testRunner] dream 失敗:', err);
+      updateAgentStage(state, 'dream', {
+        state: 'failed',
+        summary: err.message,
+        evidenceSources: ['failed_test_evidence'],
+      });
+    });
+  } else {
+    updateAgentStage(state, 'dream', {
+      state: 'skipped',
+      summary: failedCount === 0 ? '沒有失敗案例，略過 dream' : '沒有 project skill，略過 dream',
+      evidenceSources: ['failed_test_evidence'],
+    });
   }
 
   state.status = 'done';

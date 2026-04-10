@@ -794,6 +794,15 @@ interface TestRun {
     failed: number;
     skipped: number;
   };
+  agentTimeline: Array<{
+    key: string;
+    label: string;
+    state: 'pending' | 'running' | 'completed' | 'warning' | 'failed' | 'skipped';
+    summary?: string;
+    evidenceSources?: string[];
+    usedFallback?: boolean;
+    disagreement?: boolean;
+  }>;
   results: TestRunResult[];
 }
 
@@ -1002,6 +1011,33 @@ function TestReportTab({ projectId }: { projectId: number }) {
           </div>
         </div>
       </div>
+
+      {testRun.agentTimeline?.length > 0 && (
+        <div className="rounded-lg border border-sky-200 bg-white p-5 space-y-3">
+          <div>
+            <h3 className="text-base font-semibold text-gray-800">Agent 執行摘要</h3>
+            <p className="text-xs text-gray-400">快速看出哪一階段用了 fallback、哪裡有分歧、哪裡值得再追。</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {testRun.agentTimeline.map((stage) => (
+              <div key={stage.key} className="rounded-md border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-gray-800">{stage.label}</span>
+                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] uppercase text-gray-500">{stage.state}</span>
+                </div>
+                {stage.summary && <p className="mt-2 leading-relaxed">{stage.summary}</p>}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {stage.usedFallback && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-700">fallback</span>}
+                  {stage.disagreement && <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] text-red-700">disagreement</span>}
+                  {stage.evidenceSources?.slice(0, 3).map((item) => (
+                    <span key={item} className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] text-blue-700">{item}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Individual results */}
       <div className="rounded-lg border border-gray-200 bg-white">

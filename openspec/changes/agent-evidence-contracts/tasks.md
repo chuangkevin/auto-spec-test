@@ -27,8 +27,15 @@
 - [x] 5.3 Markdown report 顯示判定依據
 - [x] 5.4 latest run UI 顯示 `evidenceProvenance`
 
-## 6. Verification
+## 6. Agent Status Surface
 
-- [x] 6.1 跑 backend build 或型別檢查，確認新增欄位與 helper 不破壞既有流程
-- [x] 6.2 跑 server test，確認既有單元測試未被破壞
-- [x] 6.3 針對新增 helper / formatter 補單元測試
+- [x] 6.1 保存 `agent_timeline` 到 test run
+- [x] 6.2 WebSocket 提供 agent timeline 給執行中面板
+- [x] 6.3 latest run API 回傳 agent timeline
+- [x] 6.4 UI 顯示 fallback / disagreement / evidence sources
+
+## 7. Verification
+
+- [x] 7.1 跑 backend build 或型別檢查，確認新增欄位與 helper 不破壞既有流程
+- [x] 7.2 跑 server test，確認既有單元測試未被破壞
+- [x] 7.3 跑 web build，確認 agent status UI 可編譯

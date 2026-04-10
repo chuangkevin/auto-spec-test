@@ -72,6 +72,15 @@
 
 如果 provenance 只存在 API 或 Markdown report，使用者在日常檢視最新測試結果時仍然看不到依據。因此 latest test run UI 直接顯示 provenance badges，執行中面板也接收相同欄位。
 
+### D7: Agent timeline 作為體驗層的第一級狀態面板
+
+除了 testcase 結果，使用者還需要知道多 agent pipeline 本身目前跑到哪裡、有沒有 fallback、judge 是否分歧。因此每次 test run 保存 `agent_timeline`，並在：
+
+- 執行中面板透過 WebSocket 即時顯示
+- latest run API 與報告頁顯示上次執行摘要
+
+timeline 至少涵蓋：`Explore`、`Discuss`、`Scan`、`Execute`、`Judge`、`Review`、`Dream`。
+
 ## Risks / Trade-offs
 
 - Prompt 內容會略增，但可換來更穩定的下游推理

@@ -61,3 +61,18 @@ dream 階段 SHALL 將失敗案例與可更新的 project skills 視為不同層
 #### Scenario: Latest run UI 顯示判定依據
 - **WHEN** 使用者在專案頁查看最近一次測試結果
 - **THEN** UI SHOULD 直接顯示 `evidenceProvenance`，不應要求使用者下載報告才知道判定來源
+
+### Requirement: Agent timeline 對使用者可見
+系統 SHALL 提供機器可讀且使用者可見的 agent timeline，讓使用者知道多 agent pipeline 的階段狀態、fallback 與分歧情況。
+
+#### Scenario: 執行中面板顯示 agent 狀態
+- **WHEN** 測試正在執行或前置掃描中
+- **THEN** WebSocket SHALL 提供 agent timeline，讓 UI 顯示各階段 `pending/running/completed/warning/failed/skipped`
+
+#### Scenario: judge 出現分歧
+- **WHEN** 裁判 A / B 需要仲裁
+- **THEN** agent timeline SHOULD 標示 `disagreement`，讓使用者知道結果來自仲裁而非一致判定
+
+#### Scenario: discussion 或 dream 使用 fallback
+- **WHEN** 某個 agent 使用 fallback 結果完成流程
+- **THEN** agent timeline SHOULD 標示 `usedFallback`，避免使用者誤以為所有階段都高信心完成

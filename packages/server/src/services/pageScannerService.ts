@@ -47,6 +47,7 @@ interface TestCaseResult {
   passed: boolean;
   actualResult: string;
   evidenceProvenance?: string[];
+  judgeMeta?: { mode: 'consensus' | 'arbitrated'; disagreement: boolean; fallbackUsed: boolean };
   screenshot?: string;
   error?: string;
 }
@@ -475,6 +476,7 @@ ${behaviorsSummary}
         passed: judgeA.passed,
         actualResult: `[多Agent一致] ${judgeA.actualResult}`,
         evidenceProvenance: ['judge:step_execution_record', 'judge:final_page_observation', 'judge:test_case_expectation', 'judge:multi_agent_consensus'],
+        judgeMeta: { mode: 'consensus', disagreement: false, fallbackUsed: judgeA.fallbackUsed || judgeB.fallbackUsed },
       };
     }
 
@@ -484,6 +486,7 @@ ${behaviorsSummary}
       passed: judgeC.passed,
       actualResult: `[仲裁決定] ${judgeC.actualResult}\n裁判A(嚴格): ${judgeA.passed ? 'PASS' : 'FAIL'} - ${judgeA.actualResult}\n裁判B(寬鬆): ${judgeB.passed ? 'PASS' : 'FAIL'} - ${judgeB.actualResult}`,
       evidenceProvenance: ['judge:step_execution_record', 'judge:final_page_observation', 'judge:test_case_expectation', 'judge:arbitration'],
+      judgeMeta: { mode: 'arbitrated', disagreement: true, fallbackUsed: judgeA.fallbackUsed || judgeB.fallbackUsed || judgeC.fallbackUsed },
     };
   }
 
@@ -494,7 +497,7 @@ ${behaviorsSummary}
     pageInfo: { url: string; title: string },
     temperature: number,
     stepsSummary?: Array<{ action: string; target?: string; description: string; success: boolean; error?: string }>
-  ): Promise<{ passed: boolean; actualResult: string }> {
+  ): Promise<{ passed: boolean; actualResult: string; fallbackUsed: boolean }> {
     let stepsContext = '';
     if (stepsSummary && stepsSummary.length > 0) {
       const stepsText = stepsSummary.map((s, i) =>
@@ -544,11 +547,13 @@ ${buildJudgeEvidenceBlock()}
       return {
         passed: !!result.passed,
         actualResult: result.actualResult || '無法判斷',
+        fallbackUsed: false,
       };
     } catch {
       return {
         passed: false,
         actualResult: '無法解析 AI 回傳結果',
+        fallbackUsed: true,
       };
     }
   }
@@ -561,7 +566,7 @@ ${buildJudgeEvidenceBlock()}
     judgeA: { passed: boolean; actualResult: string },
     judgeB: { passed: boolean; actualResult: string },
     stepsSummary?: Array<{ action: string; target?: string; description: string; success: boolean; error?: string }>
-  ): Promise<{ passed: boolean; actualResult: string }> {
+  ): Promise<{ passed: boolean; actualResult: string; fallbackUsed: boolean }> {
     let stepsContext = '';
     if (stepsSummary && stepsSummary.length > 0) {
       const stepsText = stepsSummary.map((s, i) =>
@@ -606,12 +611,14 @@ ${buildJudgeEvidenceBlock()}
       return {
         passed: !!result.passed,
         actualResult: result.actualResult || '仲裁無法判斷',
+        fallbackUsed: false,
       };
     } catch {
       // 仲裁失敗時，偏向嚴格裁判（保守判定）
       return {
         passed: judgeA.passed,
         actualResult: `仲裁失敗，採用嚴格裁判結果: ${judgeA.actualResult}`,
+        fallbackUsed: true,
       };
     }
   }

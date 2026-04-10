@@ -48,6 +48,17 @@ interface Behavior {
   description: string;
 }
 
+interface AgentStage {
+  key: 'explore' | 'discuss' | 'scan' | 'execute' | 'judge' | 'review' | 'dream';
+  label: string;
+  state: 'pending' | 'running' | 'completed' | 'warning' | 'failed' | 'skipped';
+  summary?: string;
+  evidenceSources?: string[];
+  usedFallback?: boolean;
+  disagreement?: boolean;
+  updatedAt?: string;
+}
+
 type SessionStatus =
   | 'idle'
   | 'preview'
@@ -109,6 +120,7 @@ export default function TestExecutionPanel({
   const [loginReason, setLoginReason] = useState<string>('');
   const [discussion, setDiscussion] = useState<Array<{ role: string; message: string }>>([]);
   const [reviewResult, setReviewResult] = useState<any>(null);
+  const [agentTimeline, setAgentTimeline] = useState<AgentStage[]>([]);
   const [existingProject, setExistingProject] = useState<{
     id: number; name: string; testRunCount: number;
   } | null>(null);
@@ -220,6 +232,11 @@ export default function TestExecutionPanel({
               setDiscussion(prev => [...prev, d]);
               break;
             }
+            case 'agent-status': {
+              const d = msg.data as { timeline: AgentStage[] };
+              setAgentTimeline(d.timeline || []);
+              break;
+            }
             case 'explore-start': {
               const d = msg.data as { total: number };
               setCurrentStep(`AI 正在探索頁面元素（共 ${d.total} 個）...`);
@@ -311,6 +328,7 @@ export default function TestExecutionPanel({
     setComponents([]);
     setTestCases([]);
     setBehaviors([]);
+    setAgentTimeline([]);
     setLoginReason('');
     setScreenshot(null);
     setCurrentStep('');
@@ -646,6 +664,17 @@ export default function TestExecutionPanel({
   const failedCount = testCases.filter((tc) => tc.status === 'failed').length;
   const skippedCount = testCases.filter((tc) => tc.status === 'skipped').length;
   const isRunningOrPaused = status === 'running' || status === 'paused';
+
+  const stageTone = (stage: AgentStage['state']) => {
+    switch (stage) {
+      case 'running': return 'border-blue-200 bg-blue-50 text-blue-700';
+      case 'completed': return 'border-green-200 bg-green-50 text-green-700';
+      case 'warning': return 'border-amber-200 bg-amber-50 text-amber-700';
+      case 'failed': return 'border-red-200 bg-red-50 text-red-700';
+      case 'skipped': return 'border-gray-200 bg-gray-50 text-gray-500';
+      default: return 'border-gray-200 bg-white text-gray-500';
+    }
+  };
 
   const handleCreateProject = async () => {
     if (createdProjectId) {
@@ -1104,6 +1133,35 @@ export default function TestExecutionPanel({
                       </div>
                       <p className="mt-0.5 text-xs text-gray-600 leading-relaxed whitespace-pre-line">{d.message}</p>
                     </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {agentTimeline.length > 0 && (
+            <div className="rounded-lg border border-sky-200 bg-white overflow-hidden">
+              <div className="flex items-center gap-2 bg-sky-50 px-4 py-2">
+                <Loader2 size={14} className="text-sky-600" />
+                <h3 className="text-xs font-semibold text-sky-800">Agent 狀態</h3>
+              </div>
+              <div className="grid gap-2 px-3 py-3 md:grid-cols-2 xl:grid-cols-3">
+                {agentTimeline.map((stage) => (
+                  <div key={stage.key} className={`rounded-md border px-3 py-2 ${stageTone(stage.state)}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs font-semibold">{stage.label}</div>
+                      <div className="text-[10px] uppercase tracking-wide">{stage.state}</div>
+                    </div>
+                    {stage.summary && <p className="mt-1 text-[11px] leading-relaxed">{stage.summary}</p>}
+                    {(stage.usedFallback || stage.disagreement || (stage.evidenceSources && stage.evidenceSources.length > 0)) && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {stage.usedFallback && <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px]">fallback</span>}
+                        {stage.disagreement && <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px]">disagreement</span>}
+                        {stage.evidenceSources?.slice(0, 3).map((item) => (
+                          <span key={item} className="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px]">{item}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

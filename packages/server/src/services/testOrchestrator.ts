@@ -21,6 +21,7 @@ export interface DiscussionMessage {
   focusAreas?: string[];
   risks?: string[];
   evidenceBasis?: string[];
+  fallbackUsed?: boolean;
 }
 
 const AI_AGENTS = {
@@ -93,7 +94,8 @@ function normalizeStringList(value: unknown, fallback: string[]): string[] {
 function normalizeDiscussionPayload(
   agent: { name: string; role: string; avatar: string },
   payload: any,
-  fallback: Pick<DiscussionMessage, 'message' | 'focusAreas' | 'risks' | 'evidenceBasis'>
+  fallback: Pick<DiscussionMessage, 'message' | 'focusAreas' | 'risks' | 'evidenceBasis'>,
+  fallbackUsed = false
 ): DiscussionMessage {
   return {
     ...agent,
@@ -101,6 +103,7 @@ function normalizeDiscussionPayload(
     focusAreas: normalizeStringList(payload?.focusAreas, fallback.focusAreas || []),
     risks: normalizeStringList(payload?.risks, fallback.risks || []),
     evidenceBasis: normalizeStringList(payload?.evidenceBasis, fallback.evidenceBasis || []),
+    fallbackUsed,
   };
 }
 
@@ -178,14 +181,14 @@ ${pageContext}${specInstruction}${skillInstruction}
         focusAreas: ['主要使用者流程'],
         risks: ['核心流程可能只做表面驗證'],
         evidenceBasis: specContent ? ['規格書', '截圖'] : ['截圖', 'DOM'],
-      }));
+      }, false));
     } catch {
       send(normalizeDiscussionPayload(AI_AGENTS.echo, null, {
         message: '這個頁面核心功能流程是重點，我們先把主要路徑跑通再說。',
         focusAreas: ['主要使用者流程'],
         risks: ['核心流程可能只做表面驗證'],
         evidenceBasis: specContent ? ['規格書', '截圖'] : ['截圖', 'DOM'],
-      }));
+      }, true));
     }
 
     // Lisa (前端專家) — 回應 Echo，補充技術觀點
@@ -209,14 +212,14 @@ ${pageContext}${specInstruction}${skillInstruction}
         focusAreas: ['技術互動與導航行為'],
         risks: ['selector 不穩定'],
         evidenceBasis: specContent ? ['規格書', 'DOM'] : ['DOM', '截圖'],
-      }));
+      }, false));
     } catch {
       send(normalizeDiscussionPayload(AI_AGENTS.lisa, null, {
         message: '同意 Echo 的看法，但我想補充一點 — 要特別注意動態載入的元件，selector 可能不穩定。',
         focusAreas: ['技術互動與導航行為'],
         risks: ['selector 不穩定'],
         evidenceBasis: specContent ? ['規格書', 'DOM'] : ['DOM', '截圖'],
-      }));
+      }, true));
     }
 
     // Bob (UX 分析師) — 回應前兩人，從 UX 角度切入
@@ -242,14 +245,14 @@ ${pageContext}${specInstruction}${skillInstruction}
         focusAreas: ['使用者流程順暢度', '錯誤提示與回饋'],
         risks: ['流程中斷或提示不清楚'],
         evidenceBasis: specContent ? ['規格書', '截圖'] : ['截圖', '使用者流程'],
-      }));
+      }, false));
     } catch {
       send(normalizeDiscussionPayload(AI_AGENTS.bob, null, {
         message: '你們說的都對，但別忘了從使用者的角度看 — 操作流程順不順暢、錯誤提示清不清楚，這些才是最容易出包的地方。',
         focusAreas: ['使用者流程順暢度', '錯誤提示與回饋'],
         risks: ['流程中斷或提示不清楚'],
         evidenceBasis: specContent ? ['規格書', '截圖'] : ['截圖', '使用者流程'],
-      }));
+      }, true));
     }
 
     return messages;

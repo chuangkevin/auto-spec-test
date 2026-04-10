@@ -24,6 +24,13 @@ interface DreamLearning {
   evidenceBasis?: string[];
 }
 
+interface DreamSummary {
+  processed: number;
+  updated: number;
+  realBugCount: number;
+  fallbackUsed: boolean;
+}
+
 class SkillService {
   getAll(): AgentSkill[] {
     return getDb()
@@ -341,15 +348,15 @@ ${specContent}
     return this.formatSkillsForPrompt(skills, maxContentLength);
   }
 
-  async dream(projectId: number, testResults: Array<{ caseId: string; name: string; passed: boolean; actualResult: string; error?: string; evidenceProvenance?: string[] }>): Promise<void> {
+  async dream(projectId: number, testResults: Array<{ caseId: string; name: string; passed: boolean; actualResult: string; error?: string; evidenceProvenance?: string[] }>): Promise<DreamSummary> {
     const failed = testResults.filter(r => !r.passed);
-    if (failed.length === 0) return;
+    if (failed.length === 0) return { processed: 0, updated: 0, realBugCount: 0, fallbackUsed: false };
 
     const projectSkills = this.getProjectSkills(projectId);
-    if (projectSkills.length === 0) return;
+    if (projectSkills.length === 0) return { processed: failed.length, updated: 0, realBugCount: 0, fallbackUsed: false };
 
     const apiKey = getGeminiApiKey();
-    if (!apiKey) return;
+    if (!apiKey) return { processed: failed.length, updated: 0, realBugCount: 0, fallbackUsed: true };
 
     const model = getGeminiModel();
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -420,6 +427,7 @@ ${buildLearningEvidenceBlock(projectSkills.map((s) => s.name))}
             .filter(Boolean) as DreamLearning[]
         : [];
 
+      let updatedCount = 0;
       // 自動 append 學習到的資訊到 skill
       const db = getDb();
       for (const learning of learnings) {
@@ -435,11 +443,19 @@ ${buildLearningEvidenceBlock(projectSkills.map((s) => s.name))}
         const appendText = `\n\n---\n**[自動學習 ${new Date().toISOString().slice(0, 10)}]** ${learning.category}: ${learning.suggestion}${evidenceText}`;
         db.prepare('UPDATE agent_skills SET content = content || ?, updated_at = datetime(\'now\') WHERE id = ?')
           .run(appendText, skill.id);
+        updatedCount++;
       }
 
       console.log(`[dream] project ${projectId}: ${learnings.length} learnings, ${learnings.filter((l: any) => l.category !== 'real_bug').length} skill updates`);
+      return {
+        processed: learnings.length,
+        updated: updatedCount,
+        realBugCount: learnings.filter((l) => l.category === 'real_bug').length,
+        fallbackUsed: false,
+      };
     } catch (err) {
       console.error('[dream] 失敗:', err);
+      return { processed: failed.length, updated: 0, realBugCount: 0, fallbackUsed: true };
     }
   }
 }
