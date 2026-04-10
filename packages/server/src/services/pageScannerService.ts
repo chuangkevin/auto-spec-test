@@ -1,4 +1,5 @@
 import { getGeminiApiKey, getGeminiApiKeyExcluding, getGeminiModel, trackUsage } from './geminiKeys.js';
+import { buildEvidenceHierarchyBlock } from './agentEvidenceService.js';
 // skillService not imported here — skill injection happens in testRunner.ts scan flow
 
 const MAX_RETRIES = 2;
@@ -240,6 +241,16 @@ ${domTreeFormatted}
 
 `;
     }
+
+    prompt += `${buildEvidenceHierarchyBlock({
+      rawSpecText,
+      specContent,
+      skillsContent,
+      discussionText,
+      includeLivePageEvidence: true,
+    })}
+
+`;
 
     prompt += `## Selector 規則（嚴格遵守）
 

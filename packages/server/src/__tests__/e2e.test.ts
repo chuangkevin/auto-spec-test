@@ -32,45 +32,50 @@ vi.mock('../db/connection.js', () => ({
 }));
 
 // ── 3. Bootstrap schema that matches what the actual code expects ──────
-//    The code uses `password` (not password_hash) and INTEGER rowid for users.
-//    Products / projects use TEXT ids (UUID).
+//    The code uses `password_hash` for users.
+//    Products / projects still use INTEGER rowid in current route implementation.
 //    Specifications use lastInsertRowid (INTEGER).
 testDb.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     username      TEXT NOT NULL UNIQUE,
     email         TEXT NOT NULL UNIQUE,
-    password      TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
     role          TEXT NOT NULL DEFAULT 'user',
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS products (
-    id          TEXT PRIMARY KEY,
-    name        TEXT NOT NULL,
-    code        TEXT NOT NULL UNIQUE,
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL UNIQUE,
+    code        TEXT,
     description TEXT,
     created_by  INTEGER REFERENCES users(id),
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS projects (
-    id          TEXT PRIMARY KEY,
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
     name        TEXT NOT NULL,
-    product_id  TEXT NOT NULL REFERENCES products(id),
+    product_id  INTEGER NOT NULL REFERENCES products(id),
     description TEXT,
     status      TEXT NOT NULL DEFAULT 'draft',
     created_by  INTEGER REFERENCES users(id),
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    gitea_org   TEXT,
+    gitea_repo  TEXT,
+    gitea_project_id INTEGER,
+    test_url    TEXT
   );
 
   CREATE TABLE IF NOT EXISTS specifications (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    project_id        TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    project_id        INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     original_files    TEXT,
     parsed_outline_md TEXT,
+    raw_text          TEXT,
     version           INTEGER NOT NULL DEFAULT 1,
     uploaded_by       INTEGER REFERENCES users(id),
     created_at        TEXT NOT NULL DEFAULT (datetime('now'))
@@ -79,7 +84,7 @@ testDb.exec(`
   CREATE TABLE IF NOT EXISTS test_scripts (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     specification_id INTEGER NOT NULL REFERENCES specifications(id),
-    project_id       TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    project_id       INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     content_md       TEXT,
     version          INTEGER NOT NULL DEFAULT 1,
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
@@ -202,23 +207,23 @@ describe('Phase 1 E2E', () => {
   // 1. Authentication
   // ==================================================================
 
-  it('POST /api/auth/login - rejects wrong credentials', async () => {
+  it('GET /api/auth/users - lists selectable users', async () => {
     const res = await app.inject({
-      method: 'POST',
-      url: '/api/auth/login',
-      payload: { username: 'admin', password: 'wrong-password' },
+      method: 'GET',
+      url: '/api/auth/users',
     });
 
-    expect(res.statusCode).toBe(401);
+    expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.error).toBeDefined();
+    expect(Array.isArray(body)).toBe(true);
+    expect(body[0]?.username).toBe('admin');
   });
 
-  it('POST /api/auth/login - succeeds with valid credentials', async () => {
+  it('POST /api/auth/select - issues a token for selected user', async () => {
     const res = await app.inject({
       method: 'POST',
-      url: '/api/auth/login',
-      payload: { username: 'admin', password: 'admin123' },
+      url: '/api/auth/select',
+      payload: { userId: 1 },
     });
 
     expect(res.statusCode).toBe(200);
@@ -247,23 +252,27 @@ describe('Phase 1 E2E', () => {
     expect(body.user.role).toBe('admin');
   });
 
-  it('GET /api/auth/me - rejects missing token', async () => {
+  it('GET /api/auth/me - falls back to default admin without token', async () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/auth/me',
     });
 
-    expect(res.statusCode).toBe(401);
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.user.username).toBe('admin');
   });
 
-  it('GET /api/auth/me - rejects invalid token', async () => {
+  it('GET /api/auth/me - falls back to default admin on invalid token', async () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/auth/me',
       headers: { authorization: 'Bearer invalid.token.here' },
     });
 
-    expect(res.statusCode).toBe(401);
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.user.username).toBe('admin');
   });
 
   // ==================================================================
@@ -332,13 +341,13 @@ describe('Phase 1 E2E', () => {
     expect(body.name).toBe('Test Product');
   });
 
-  it('GET /api/products - rejects unauthenticated request', async () => {
+  it('GET /api/products - allows unauthenticated request via fallback auth', async () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/products',
     });
 
-    expect(res.statusCode).toBe(401);
+    expect(res.statusCode).toBe(200);
   });
 
   // ==================================================================

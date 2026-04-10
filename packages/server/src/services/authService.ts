@@ -31,7 +31,7 @@ export function generateToken(user: TokenPayload): string {
 /** 驗證 token（解析 base64 payload） */
 export function verifyToken(token: string): TokenPayload {
   const parts = token.split('.');
-  if (parts.length < 2) throw new Error('Invalid token');
+  if (parts.length !== 3 || parts[2] !== 'nosig') throw new Error('Invalid token');
   const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
   if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
     throw new Error('Token expired');

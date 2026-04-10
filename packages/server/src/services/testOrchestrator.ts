@@ -18,6 +18,9 @@ export interface DiscussionMessage {
   name: string;
   avatar: string;
   message: string;
+  focusAreas?: string[];
+  risks?: string[];
+  evidenceBasis?: string[];
 }
 
 const AI_AGENTS = {
@@ -74,6 +77,31 @@ function cleanJson(text: string): any {
     cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
   }
   return JSON.parse(cleaned);
+}
+
+function normalizeStringList(value: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(value)) return fallback;
+
+  const normalized = value
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .slice(0, 4);
+
+  return normalized.length > 0 ? normalized : fallback;
+}
+
+function normalizeDiscussionPayload(
+  agent: { name: string; role: string; avatar: string },
+  payload: any,
+  fallback: Pick<DiscussionMessage, 'message' | 'focusAreas' | 'risks' | 'evidenceBasis'>
+): DiscussionMessage {
+  return {
+    ...agent,
+    message: String(payload?.message || fallback.message).trim(),
+    focusAreas: normalizeStringList(payload?.focusAreas, fallback.focusAreas || []),
+    risks: normalizeStringList(payload?.risks, fallback.risks || []),
+    evidenceBasis: normalizeStringList(payload?.evidenceBasis, fallback.evidenceBasis || []),
+  };
 }
 
 export class TestOrchestrator {
@@ -136,11 +164,29 @@ export class TestOrchestrator {
 
 ${pageContext}${specInstruction}${skillInstruction}
 
-只回傳 JSON: { "message": "你的發言（口語化，如果有規格書或領域知識請務必引用）" }`;
+只回傳 JSON:
+{
+  "message": "你的發言（口語化，如果有規格書或領域知識請務必引用）",
+  "focusAreas": ["需要被測試覆蓋的功能或流程，1-3項"],
+  "risks": ["最容易失敗或誤判的風險，0-2項"],
+  "evidenceBasis": ["你主要根據哪些證據判斷，例如 規格書 / 截圖 / DOM / 領域知識"]
+}`;
     try {
       const res = cleanJson(await callGemini(echoPrompt, [screenshot]));
-      send({ ...AI_AGENTS.echo, message: res.message });
-    } catch { send({ ...AI_AGENTS.echo, message: '這個頁面核心功能流程是重點，我們先把主要路徑跑通再說。' }); }
+      send(normalizeDiscussionPayload(AI_AGENTS.echo, res, {
+        message: '這個頁面核心功能流程是重點，我們先把主要路徑跑通再說。',
+        focusAreas: ['主要使用者流程'],
+        risks: ['核心流程可能只做表面驗證'],
+        evidenceBasis: specContent ? ['規格書', '截圖'] : ['截圖', 'DOM'],
+      }));
+    } catch {
+      send(normalizeDiscussionPayload(AI_AGENTS.echo, null, {
+        message: '這個頁面核心功能流程是重點，我們先把主要路徑跑通再說。',
+        focusAreas: ['主要使用者流程'],
+        risks: ['核心流程可能只做表面驗證'],
+        evidenceBasis: specContent ? ['規格書', '截圖'] : ['截圖', 'DOM'],
+      }));
+    }
 
     // Lisa (前端專家) — 回應 Echo，補充技術觀點
     const lisaPrompt = `你是 Lisa，一位前端技術專家。你的同事 Echo 剛說了：「${messages[0]?.message || ''}」
@@ -149,11 +195,29 @@ ${pageContext}${specInstruction}${skillInstruction}
 
 ${pageContext}${specInstruction}${skillInstruction}
 
-只回傳 JSON: { "message": "你的回應（口語化，引用規格書或領域知識中的技術細節）" }`;
+只回傳 JSON:
+{
+  "message": "你的回應（口語化，引用規格書或領域知識中的技術細節）",
+  "focusAreas": ["需要被測試覆蓋的技術互動，1-3項"],
+  "risks": ["selector、URL、資料流或狀態上的風險，0-2項"],
+  "evidenceBasis": ["你主要根據哪些證據判斷，例如 規格書 / DOM / 領域知識"]
+}`;
     try {
       const res = cleanJson(await callGemini(lisaPrompt, [screenshot]));
-      send({ ...AI_AGENTS.lisa, message: res.message });
-    } catch { send({ ...AI_AGENTS.lisa, message: '同意 Echo 的看法，但我想補充一點 — 要特別注意動態載入的元件，selector 可能不穩定。' }); }
+      send(normalizeDiscussionPayload(AI_AGENTS.lisa, res, {
+        message: '同意 Echo 的看法，但我想補充一點 — 要特別注意動態載入的元件，selector 可能不穩定。',
+        focusAreas: ['技術互動與導航行為'],
+        risks: ['selector 不穩定'],
+        evidenceBasis: specContent ? ['規格書', 'DOM'] : ['DOM', '截圖'],
+      }));
+    } catch {
+      send(normalizeDiscussionPayload(AI_AGENTS.lisa, null, {
+        message: '同意 Echo 的看法，但我想補充一點 — 要特別注意動態載入的元件，selector 可能不穩定。',
+        focusAreas: ['技術互動與導航行為'],
+        risks: ['selector 不穩定'],
+        evidenceBasis: specContent ? ['規格書', 'DOM'] : ['DOM', '截圖'],
+      }));
+    }
 
     // Bob (UX 分析師) — 回應前兩人，從 UX 角度切入
     const bobPrompt = `你是 Bob，一位 UX 體驗分析師。你的同事們討論了：
@@ -164,11 +228,29 @@ ${pageContext}${specInstruction}${skillInstruction}
 
 ${pageContext}${specInstruction}${skillInstruction}
 
-只回傳 JSON: { "message": "你的回應（口語化，引用規格書或領域知識中的 UX 要求）" }`;
+只回傳 JSON:
+{
+  "message": "你的回應（口語化，引用規格書或領域知識中的 UX 要求）",
+  "focusAreas": ["需要被測試覆蓋的 UX 流程或提示，1-3項"],
+  "risks": ["使用者最容易卡住或誤解的地方，0-2項"],
+  "evidenceBasis": ["你主要根據哪些證據判斷，例如 規格書 / 截圖 / 使用者流程"]
+}`;
     try {
       const res = cleanJson(await callGemini(bobPrompt, [screenshot]));
-      send({ ...AI_AGENTS.bob, message: res.message });
-    } catch { send({ ...AI_AGENTS.bob, message: '你們說的都對，但別忘了從使用者的角度看 — 操作流程順不順暢、錯誤提示清不清楚，這些才是最容易出包的地方。' }); }
+      send(normalizeDiscussionPayload(AI_AGENTS.bob, res, {
+        message: '你們說的都對，但別忘了從使用者的角度看 — 操作流程順不順暢、錯誤提示清不清楚，這些才是最容易出包的地方。',
+        focusAreas: ['使用者流程順暢度', '錯誤提示與回饋'],
+        risks: ['流程中斷或提示不清楚'],
+        evidenceBasis: specContent ? ['規格書', '截圖'] : ['截圖', '使用者流程'],
+      }));
+    } catch {
+      send(normalizeDiscussionPayload(AI_AGENTS.bob, null, {
+        message: '你們說的都對，但別忘了從使用者的角度看 — 操作流程順不順暢、錯誤提示清不清楚，這些才是最容易出包的地方。',
+        focusAreas: ['使用者流程順暢度', '錯誤提示與回饋'],
+        risks: ['流程中斷或提示不清楚'],
+        evidenceBasis: specContent ? ['規格書', '截圖'] : ['截圖', '使用者流程'],
+      }));
+    }
 
     return messages;
   }
@@ -184,21 +266,52 @@ ${pageContext}${specInstruction}${skillInstruction}
   formatDiscussionForPrompt(discussion: DiscussionMessage[]): string {
     if (discussion.length === 0) return '';
 
-    // 先列出原始討論
     const rawDiscussion = discussion
       .map(d => `${d.name}（${d.role}）: ${d.message}`)
       .join('\n');
 
+    const focusAreas = Array.from(new Set(
+      discussion.flatMap((d) => d.focusAreas || []).map((item) => item.trim()).filter(Boolean)
+    ));
+    const risks = Array.from(new Set(
+      discussion.flatMap((d) => d.risks || []).map((item) => item.trim()).filter(Boolean)
+    ));
+    const evidenceLines = discussion
+      .map((d) => {
+        const basis = (d.evidenceBasis || []).filter(Boolean).join('、');
+        return basis ? `- ${d.name}: ${basis}` : '';
+      })
+      .filter(Boolean)
+      .join('\n');
+
+    const focusBlock = focusAreas.length > 0
+      ? focusAreas.map((item, index) => `${index + 1}. ${item}`).join('\n')
+      : '1. 主要使用者流程';
+    const riskBlock = risks.length > 0
+      ? risks.map((item, index) => `${index + 1}. ${item}`).join('\n')
+      : '1. selector 或流程判斷可能失準';
+    const evidenceBlock = evidenceLines || '- Echo/Lisa/Bob: 截圖、DOM、規格書或 skills';
+
     return `## AI 團隊討論紀錄
 ${rawDiscussion}
 
-## 必須覆蓋的測試重點（從討論中提取）
+## 聚合後的 Focus Areas（每項至少一個測試案例）
+${focusBlock}
 
-請仔細閱讀上方討論，從中提取所有被提到的功能、風險、建議，然後：
+## 聚合後的 Risks（測試案例或預期要回應）
+${riskBlock}
 
-1. **為每個被提到的功能/風險產出至少一個測試案例**
-2. 在每個測試案例的 name 中標註它對應哪個討論重點
-3. 如果討論提到某功能但頁面 DOM 中找不到對應元素，在 testPlan 最後加一個 category="missing" 的案例標記該功能缺失
+## 各 Agent 主要證據依據
+${evidenceBlock}
+
+## 必須覆蓋的測試重點（硬性要求）
+
+請根據上方 Focus Areas、Risks 與原始討論來產出測試計畫，並遵守：
+
+1. **為每個 focus area 產出至少一個測試案例**
+2. 測試案例必須回應 risks 中提到的失敗風險或 UX 風險
+3. 在每個測試案例的 name 或 category 中標註它對應的 focus area
+4. 如果討論提到某功能但頁面 DOM 中找不到對應元素，在 testPlan 最後加一個 category="missing" 的案例標記該功能缺失
 
 **這是硬性要求：討論中提到的每個測試方向都必須有對應的 TC，不能遺漏。**
 `;

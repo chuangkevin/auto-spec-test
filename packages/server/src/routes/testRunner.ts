@@ -7,7 +7,7 @@ import { explorerService } from '../services/explorerService.js';
 import { pageScannerService } from '../services/pageScannerService.js';
 import { reportService } from '../services/reportService.js';
 import { selfQuestionService } from '../services/selfQuestionService.js';
-import { testOrchestrator } from '../services/testOrchestrator.js';
+import { testOrchestrator, type DiscussionMessage } from '../services/testOrchestrator.js';
 import { skillService } from '../services/skillService.js';
 
 /** 每個 session 的執行狀態 */
@@ -23,7 +23,7 @@ interface RunnerState {
     type: string;
     description: string;
   }>;
-  discussion?: Array<{ role: string; name: string; avatar: string; message: string }>;
+  discussion?: DiscussionMessage[];
   testRunId?: number;
   currentCaseIndex: number;
   paused: boolean;
