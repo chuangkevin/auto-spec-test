@@ -30,6 +30,7 @@ export interface TestCase {
   steps: TestCaseStep[];
   expectedResult: string;
   actualResult?: string;
+  evidenceProvenance?: string[];
   screenshot?: string;
 }
 

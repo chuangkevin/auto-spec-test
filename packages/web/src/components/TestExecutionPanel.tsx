@@ -166,6 +166,7 @@ export default function TestExecutionPanel({
                 passed?: boolean;
                 skipped?: boolean;
                 actualResult?: string;
+                evidenceProvenance?: string[];
                 screenshot?: string;
               };
               // Backend sends { passed: bool } or { status: string }
@@ -178,6 +179,7 @@ export default function TestExecutionPanel({
                         ...tc,
                         status: resultStatus,
                         actualResult: d.actualResult,
+                        evidenceProvenance: d.evidenceProvenance ?? tc.evidenceProvenance,
                         screenshot: d.screenshot ?? tc.screenshot,
                       }
                     : tc,
@@ -508,7 +510,12 @@ export default function TestExecutionPanel({
               setTestCases(prev => prev.map(tc => {
                 const r = results.find((x: any) => x.case_id === tc.id);
                 if (r && r.status !== 'pending') {
-                  return { ...tc, status: r.status, actualResult: r.actual_result };
+                  return {
+                    ...tc,
+                    status: r.status,
+                    actualResult: r.actual_result,
+                    evidenceProvenance: r.evidence_provenance ? JSON.parse(r.evidence_provenance) : tc.evidenceProvenance,
+                  };
                 }
                 return tc;
               }));

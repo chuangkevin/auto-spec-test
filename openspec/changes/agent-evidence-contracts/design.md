@@ -68,6 +68,10 @@
 - Markdown report 顯示「判定依據」
 - dream 在學習失敗案例時讀到上一輪判定主要依據
 
+### D6: 前端直接顯示 provenance，不要求使用者下載報告才看得到
+
+如果 provenance 只存在 API 或 Markdown report，使用者在日常檢視最新測試結果時仍然看不到依據。因此 latest test run UI 直接顯示 provenance badges，執行中面板也接收相同欄位。
+
 ## Risks / Trade-offs
 
 - Prompt 內容會略增，但可換來更穩定的下游推理

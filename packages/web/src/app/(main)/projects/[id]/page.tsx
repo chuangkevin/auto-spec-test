@@ -777,6 +777,7 @@ interface TestRunResult {
   name: string;
   status: 'passed' | 'failed' | 'skipped';
   actualResult?: string;
+  evidenceProvenance?: string[];
   error?: string;
   screenshot?: string;
   duration?: number;
@@ -794,6 +795,13 @@ interface TestRun {
     skipped: number;
   };
   results: TestRunResult[];
+}
+
+function formatEvidenceLabel(value: string): string {
+  return value
+    .replace(/^judge:/, 'Judge: ')
+    .replace(/^runner:/, 'Runner: ')
+    .replace(/_/g, ' ');
 }
 
 function TestReportTab({ projectId }: { projectId: number }) {
@@ -856,6 +864,9 @@ function TestReportTab({ projectId }: { projectId: number }) {
           r.status === 'passed' ? '✅' : r.status === 'failed' ? '❌' : '⏭';
         lines.push(`### ${r.testCaseId}: ${r.name} — ${icon} ${r.status.toUpperCase()}`);
         if (r.actualResult) lines.push(`- 實際結果：${r.actualResult}`);
+        if (r.evidenceProvenance && r.evidenceProvenance.length > 0) {
+          lines.push(`- 判定依據：${r.evidenceProvenance.join('、')}`);
+        }
         lines.push('');
       }
       const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
@@ -1060,6 +1071,21 @@ function TestReportTab({ projectId }: { projectId: number }) {
                         <pre className="mt-1 whitespace-pre-wrap rounded bg-red-50 p-2 text-xs text-red-700">
                           {r.error}
                         </pre>
+                      </div>
+                    )}
+                    {r.evidenceProvenance && r.evidenceProvenance.length > 0 && (
+                      <div>
+                        <span className="font-medium text-gray-700">判定依據：</span>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {r.evidenceProvenance.map((item) => (
+                            <span
+                              key={item}
+                              className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700"
+                            >
+                              {formatEvidenceLabel(item)}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     )}
                     {r.screenshot && (

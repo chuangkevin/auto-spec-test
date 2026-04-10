@@ -25,6 +25,7 @@
 - [x] 5.1 在 `test_case_results` 保存 `evidence_provenance`
 - [x] 5.2 latest test run API 回傳 `evidenceProvenance`
 - [x] 5.3 Markdown report 顯示判定依據
+- [x] 5.4 latest run UI 顯示 `evidenceProvenance`
 
 ## 6. Verification
 
