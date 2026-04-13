@@ -3,7 +3,14 @@
 
 # AI 整合規格
 
-使用 Gemini 2.5 Flash，共有 5 個 AI 整合點。
+使用 Gemini 2.5 Flash，但執行層統一透過 `@kevinsisi/ai-core` runtime（key pool、retry、multimodal client）呼叫模型，共有 5 個 AI 整合點。
+
+## Runtime 原則
+
+- 所有核心 AI 呼叫應透過共享 runtime service 統一進入 `@kevinsisi/ai-core`
+- 不應在各 service 內分散維護 `fetch https://generativelanguage.googleapis.com/...`
+- key cooldown、blocked 狀態與 retry 行為應由共用 runtime / key pool 控制
+- 影像輸入（截圖）應透過同一個 multimodal runtime 介面傳入
 
 ## 1. 規格書解析
 

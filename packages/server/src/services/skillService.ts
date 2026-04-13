@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../db/connection.js';
 import { buildLearningEvidenceBlock } from './agentEvidenceService.js';
-import { getGeminiApiKey, getGeminiModel, trackUsage } from './geminiKeys.js';
+import { generateRuntimeText } from './aiRuntimeService.js';
 
 export interface AgentSkill {
   id: string;
@@ -133,12 +133,6 @@ class SkillService {
     if (active.length === 0) return [];
     if (active.length <= 3) return active; // 3 個以下全用
 
-    const apiKey = getGeminiApiKey();
-    if (!apiKey) { console.warn('[skillService] 沒有 API key'); return active.slice(0, 3); }
-
-    const model = getGeminiModel();
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
     const skillList = active.map((s, i) => `${i + 1}. ${s.name}: ${s.description}`).join('\n');
 
     const prompt = `你是一個前端 QA 測試專家。我要對以下頁面做 UI/UX 測試：
@@ -156,21 +150,11 @@ ${skillList}
 如果沒有跟前端 UI 測試相關的，回傳 "none"`;
 
     try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0, maxOutputTokens: 50 },
-        }),
-      });
-      const json = await res.json();
-
-      if (json.usageMetadata) {
-        trackUsage(apiKey, model, 'skill_select', json.usageMetadata);
-      }
-
-      const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+      const text = (await generateRuntimeText({
+        prompt,
+        callType: 'skill_select',
+        maxOutputTokens: 50,
+      })).trim();
       console.log(`[skillService] AI 回傳: "${text}"`);
       if (text === 'none' || !text) {
         console.log(`[skillService] AI 判斷無相關 skill，不注入`);
@@ -225,15 +209,6 @@ ${skillList}
     // 刪除舊的 project skill
     db.prepare('DELETE FROM agent_skills WHERE project_id = ?').run(projectId);
 
-    const apiKey = getGeminiApiKey();
-    if (!apiKey) {
-      console.warn('[skillService] generateFromSpec: 沒有 API key');
-      return [];
-    }
-
-    const model = getGeminiModel();
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
     const prompt = `你是一個 QA 自動化測試知識萃取專家。以下是一個產品的規格書大綱。
 請從中提取 3-5 個最重要的業務規則，每個規則包含：
 1. name: kebab-case 識別名（如 url-format-rules）
@@ -261,21 +236,11 @@ ${specContent}
 只回傳 JSON: { "skills": [{ "name": "...", "description": "...", "content": "..." }] }`;
 
     try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 16384 },
-        }),
+      const text: string = await generateRuntimeText({
+        prompt,
+        callType: 'skill_generate',
+        maxOutputTokens: 16384,
       });
-      const json = await res.json();
-
-      if (json.usageMetadata) {
-        trackUsage(apiKey, model, 'skill_generate', json.usageMetadata);
-      }
-
-      const text: string = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
       let cleaned = text.trim();
       if (cleaned.startsWith('```')) {
         cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
@@ -285,7 +250,6 @@ ${specContent}
         parsed = JSON.parse(cleaned);
       } catch (parseErr) {
         console.warn(`[skillService] JSON parse 失敗, text length=${cleaned.length}, last100=${cleaned.slice(-100)}`);
-        console.warn(`[skillService] finishReason=${json.candidates?.[0]?.finishReason}`);
 
         // 嘗試修復截斷的 JSON
         let fixed = cleaned;
@@ -355,12 +319,6 @@ ${specContent}
     const projectSkills = this.getProjectSkills(projectId);
     if (projectSkills.length === 0) return { processed: failed.length, updated: 0, realBugCount: 0, fallbackUsed: false };
 
-    const apiKey = getGeminiApiKey();
-    if (!apiKey) return { processed: failed.length, updated: 0, realBugCount: 0, fallbackUsed: true };
-
-    const model = getGeminiModel();
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
     const failedSummary = failed.map(r =>
       `${r.caseId} ${r.name}: ${(r.actualResult || '').slice(0, 200)}${r.error ? ` [Error: ${r.error.slice(0, 100)}]` : ''}${r.evidenceProvenance && r.evidenceProvenance.length > 0 ? ` [Evidence: ${r.evidenceProvenance.join(', ')}]` : ''}`
     ).join('\n');
@@ -386,18 +344,11 @@ ${buildLearningEvidenceBlock(projectSkills.map((s) => s.name))}
 { "learnings": [{ "caseId": "TC-001", "category": "selector_issue|url_format_issue|spec_mismatch|real_bug", "skillToUpdate": "skill-name-or-null", "suggestion": "建議內容（50字內）", "evidenceBasis": ["actualResult", "error", "current skill"] }] }`;
 
     try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 2048 },
-        }),
+      const text: string = await generateRuntimeText({
+        prompt,
+        callType: 'dream',
+        maxOutputTokens: 2048,
       });
-      const json = await res.json();
-      if (json.usageMetadata) trackUsage(apiKey, model, 'dream', json.usageMetadata);
-
-      const text: string = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
       let cleaned = text.trim();
       if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
 

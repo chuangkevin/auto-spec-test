@@ -1,5 +1,5 @@
 import { browserService } from './browserService.js';
-import { getGeminiApiKey, getGeminiModel, trackUsage } from './geminiKeys.js';
+import { generateRuntimeText } from './aiRuntimeService.js';
 // skillService not needed in explorer — analyzeChange only classifies toggle/modal/nav
 
 interface BehaviorResult {
@@ -335,12 +335,6 @@ export class ExplorerService {
     }
 
     // 用 Gemini 比較兩張截圖
-    const apiKey = getGeminiApiKey();
-    if (!apiKey) return { type: 'no_effect', description: '無法分析（無 API Key）' };
-
-    const model = getGeminiModel();
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
     // 探索階段不注入 skill（analyzeChange 只判斷 toggle/modal/nav，不需要業務知識）
     const skillHint = '';
 
@@ -355,31 +349,16 @@ modal: 出現彈窗/覆蓋層
 dropdown: 出現下拉選單/選項列表
 no_effect: 幾乎沒變化`;
 
-    const body = {
-      contents: [{
-        parts: [
-          { text: prompt },
-          { inlineData: { mimeType: 'image/jpeg', data: before } },
-          { inlineData: { mimeType: 'image/jpeg', data: after } },
-        ],
-      }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 256 },
-    };
-
     try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+      const text = await generateRuntimeText({
+        prompt,
+        callType: 'explore_behavior',
+        maxOutputTokens: 256,
+        images: [
+          { mimeType: 'image/jpeg', data: before },
+          { mimeType: 'image/jpeg', data: after },
+        ],
       });
-      const json = await res.json();
-
-      // 追蹤用量
-      if (json.usageMetadata) {
-        trackUsage(apiKey, model, 'explore_behavior', json.usageMetadata);
-      }
-
-      const text = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
       const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
       return JSON.parse(cleaned);
     } catch {

@@ -1,4 +1,4 @@
-import { getGeminiApiKey, getGeminiModel, trackUsage } from './geminiKeys.js';
+import { generateRuntimeText } from './aiRuntimeService.js';
 
 class SelfQuestionService {
   async analyzeStep(
@@ -11,12 +11,6 @@ class SelfQuestionService {
     needRevert: boolean;
     passed: boolean;
   }> {
-    const apiKey = getGeminiApiKey();
-    if (!apiKey) return { change: '無法分析', expected: true, needRevert: false, passed: true };
-
-    const model = getGeminiModel();
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
     const prompt = `你是一個 QA 測試工程師。你剛才執行了操作：${step.action} on "${step.target || ''}" (${step.description})
 
 以下是操作前後的截圖。請分析：
@@ -29,31 +23,16 @@ class SelfQuestionService {
 只回傳 JSON：
 { "change": "變化描述(15字內)", "expected": true/false, "needRevert": true/false, "passed": true/false }`;
 
-    const body = {
-      contents: [{
-        parts: [
-          { text: prompt },
-          { inlineData: { mimeType: 'image/jpeg', data: beforeScreenshot } },
-          { inlineData: { mimeType: 'image/jpeg', data: afterScreenshot } },
-        ],
-      }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 256 },
-    };
-
     try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+      const text = await generateRuntimeText({
+        prompt,
+        callType: 'self_question',
+        maxOutputTokens: 256,
+        images: [
+          { mimeType: 'image/jpeg', data: beforeScreenshot },
+          { mimeType: 'image/jpeg', data: afterScreenshot },
+        ],
       });
-      const json = await res.json();
-
-      // 追蹤用量
-      if (json.usageMetadata) {
-        trackUsage(apiKey, model, 'self_question', json.usageMetadata);
-      }
-
-      const text = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
       const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
       return JSON.parse(cleaned);
     } catch {

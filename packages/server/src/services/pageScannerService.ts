@@ -1,8 +1,6 @@
-import { getGeminiApiKey, getGeminiApiKeyExcluding, getGeminiModel, trackUsage } from './geminiKeys.js';
+import { generateRuntimeText } from './aiRuntimeService.js';
 import { buildEvidenceHierarchyBlock, buildJudgeEvidenceBlock } from './agentEvidenceService.js';
 // skillService not imported here — skill injection happens in testRunner.ts scan flow
-
-const MAX_RETRIES = 2;
 
 /** 清理 Gemini 回傳的文字，去除 markdown code fence 等 */
 function cleanJsonText(text: string): string {
@@ -13,8 +11,6 @@ function cleanJsonText(text: string): string {
   }
   return cleaned.trim();
 }
-const RETRY_DELAY_MS = 3000;
-
 interface ComponentInfo {
   name: string;
   type: string; // form, navigation, button, link, etc.
@@ -60,94 +56,14 @@ async function callGeminiVision(
   projectId?: string,
   temperature?: number
 ): Promise<string> {
-  let apiKey = getGeminiApiKey();
-  if (!apiKey) {
-    throw new Error('沒有可用的 Gemini API Key，請在系統設定中新增。');
-  }
-
-  const model = getGeminiModel();
-
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-      const body = {
-        contents: [
-          {
-            parts: [
-              { text: prompt },
-              {
-                inlineData: {
-                  mimeType: 'image/jpeg',
-                  data: imageBase64,
-                },
-              },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: temperature ?? 0.2,
-          maxOutputTokens: 32768,
-        },
-      };
-
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const errText = await res.text();
-        const isRetryable = (res.status === 429 || res.status === 503) && attempt < MAX_RETRIES;
-        if (isRetryable) {
-          console.warn(`[pageScannerService] ${res.status} on key ...${apiKey!.slice(-4)}, 重試中 (${attempt + 1}/${MAX_RETRIES})...`);
-          await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
-          if (res.status === 429) {
-            const nextKey = getGeminiApiKeyExcluding(apiKey!);
-            if (nextKey) apiKey = nextKey;
-          }
-          continue;
-        }
-        throw new Error(`Gemini API 錯誤 (${res.status}): ${errText}`);
-      }
-
-      const json = await res.json();
-
-      // Debug: log finish reason
-      const finishReason = json.candidates?.[0]?.finishReason;
-      if (finishReason && finishReason !== 'STOP') {
-        console.warn(`[pageScannerService] finishReason: ${finishReason}, tokens used: ${JSON.stringify(json.usageMetadata)}`);
-      }
-
-      // 追蹤用量
-      if (json.usageMetadata) {
-        trackUsage(apiKey!, model, callType, json.usageMetadata, projectId);
-      }
-
-      const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) {
-        throw new Error('Gemini 回傳內容為空');
-      }
-      return text;
-    } catch (err: any) {
-      const msg = err?.message || '';
-      const is429 = msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED');
-      const is503 = msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('high demand');
-      if ((is429 || is503) && attempt < MAX_RETRIES) {
-        console.warn(`[pageScannerService] ${is503 ? '503' : '429'} caught in exception, 重試中 (${attempt + 1}/${MAX_RETRIES})...`);
-        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
-        if (is429) {
-          const nextKey = getGeminiApiKeyExcluding(apiKey!);
-          if (nextKey) apiKey = nextKey;
-        }
-        continue;
-      }
-      throw err;
-    }
-  }
-
-  throw new Error('AI API 呼叫失敗，已達最大重試次數。');
+  return generateRuntimeText({
+    prompt,
+    callType,
+    projectId,
+    temperature,
+    maxOutputTokens: 32768,
+    images: [{ mimeType: 'image/jpeg', data: imageBase64 }],
+  });
 }
 
 /** 把 DOM tree JSON 轉成 indent 格式的可讀文字 */

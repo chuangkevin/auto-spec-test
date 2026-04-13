@@ -1,5 +1,13 @@
 import db from '../db/connection.js';
 
+export interface GeminiPoolState {
+  id: number;
+  key: string;
+  isActive: boolean;
+  cooldownUntil: number;
+  usageCount: number;
+}
+
 const DEFAULT_MODEL = 'gemini-2.5-flash';
 
 let cachedKeys: string[] = [];
@@ -25,6 +33,12 @@ function loadBlockedSuffixes(): Set<string> {
   const row = db.prepare("SELECT value FROM settings WHERE key = 'blocked_api_keys'").get() as any;
   if (!row?.value) return new Set();
   return new Set(row.value.split(',').map((s: string) => s.trim()).filter(Boolean));
+}
+
+function saveBlockedSuffixes(blocked: Set<string>): void {
+  db.prepare(
+    "INSERT INTO settings (key, value, updated_at) VALUES ('blocked_api_keys', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')"
+  ).run([...blocked].join(','));
 }
 
 export function loadKeys(): string[] {
@@ -63,6 +77,35 @@ export function loadKeys(): string[] {
   });
   lastLoadTime = now;
   return cachedKeys;
+}
+
+export function getGeminiPoolState(): GeminiPoolState[] {
+  const blocked = loadBlockedSuffixes();
+  return loadKeys().map((key, index) => ({
+    id: index + 1,
+    key,
+    isActive: !blocked.has(key.slice(-4)),
+    cooldownUntil: keyCooldowns.get(key) || 0,
+    usageCount: 0,
+  }));
+}
+
+export function updateGeminiPoolState(next: GeminiPoolState): void {
+  const blocked = loadBlockedSuffixes();
+  if (next.isActive) {
+    blocked.delete(next.key.slice(-4));
+  } else {
+    blocked.add(next.key.slice(-4));
+  }
+  saveBlockedSuffixes(blocked);
+
+  if (next.cooldownUntil > Date.now()) {
+    keyCooldowns.set(next.key, next.cooldownUntil);
+  } else {
+    keyCooldowns.delete(next.key);
+  }
+
+  invalidateKeyCache();
 }
 
 /** Force reload keys from DB (call after add/delete) */

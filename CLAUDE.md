@@ -61,9 +61,17 @@ pnpm monorepo
 3. **browserService** pools Playwright browser instances (limit: `MAX_BROWSER_SESSIONS` env, default 3).
 4. Test execution streams via WebSocket (`/api/ws`) to the frontend in real-time.
 
-### 5. Gemini Key Pool
+### 5. Gemini Key Pool / AI Runtime
 
-`geminiKeys.ts` manages a pool of API keys (comma-separated `GEMINI_API_KEY`). Round-robin selection with usage tracking (`trackUsage`). Model: `GEMINI_MODEL` (default `gemini-2.5-flash`). Retry on 503 via `@kevinsisi/ai-core`.
+`geminiKeys.ts` manages a pool of API keys (comma-separated `GEMINI_API_KEY`). Model: `GEMINI_MODEL` (default `gemini-2.5-flash`).
+
+Core AI calls should go through `aiRuntimeService.ts`, which uses `@kevinsisi/ai-core` for:
+- key-pool allocation
+- retry / cooldown behavior
+- multimodal Gemini client calls
+- shared usage tracking
+
+Do not add new direct Gemini HTTP calls in feature services unless there is a temporary migration reason.
 
 ---
 

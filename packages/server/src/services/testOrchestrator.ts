@@ -10,7 +10,7 @@
  * 6. 最終報告 (finalize) — 只保留有效結果
  */
 
-import { getGeminiApiKey, getGeminiModel, trackUsage } from './geminiKeys.js';
+import { generateRuntimeText } from './aiRuntimeService.js';
 import { skillService } from './skillService.js';
 
 export interface DiscussionMessage {
@@ -44,32 +44,12 @@ interface TestPlanReview {
 }
 
 async function callGemini(prompt: string, images?: string[]): Promise<string> {
-  const apiKey = getGeminiApiKey();
-  if (!apiKey) throw new Error('No API key');
-  const model = getGeminiModel();
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-  const parts: any[] = [{ text: prompt }];
-  if (images) {
-    for (const img of images) {
-      parts.push({ inlineData: { mimeType: 'image/jpeg', data: img } });
-    }
-  }
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
-    }),
+  return generateRuntimeText({
+    prompt,
+    callType: 'orchestrator',
+    maxOutputTokens: 4096,
+    images: images?.map((img) => ({ mimeType: 'image/jpeg', data: img })),
   });
-
-  const json = await res.json();
-  if (json.usageMetadata && apiKey) {
-    trackUsage(apiKey, model, 'orchestrator', json.usageMetadata);
-  }
-  return json.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
 function cleanJson(text: string): any {
