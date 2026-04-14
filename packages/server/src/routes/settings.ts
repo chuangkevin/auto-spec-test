@@ -14,8 +14,7 @@ import {
 } from '../services/slackService.js';
 
 export default async function settingsRoutes(fastify: FastifyInstance) {
-  // Get API keys (masked) with usage stats
-  fastify.get('/api/settings/api-keys', async () => {
+  const getAiRuntimeKeys = async () => {
     const keys = getKeyList();
     const usage = getUsageStats();
     return {
@@ -29,6 +28,15 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       })),
       usage,
     };
+  };
+
+  // Get API keys (masked) with usage stats
+  fastify.get('/api/settings/api-keys', async () => {
+    return getAiRuntimeKeys();
+  });
+
+  fastify.get('/api/settings/ai-runtime/keys', async () => {
+    return getAiRuntimeKeys();
   });
 
   // Add a new API key
@@ -40,6 +48,26 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
       if (!apiKey || !isValidKeyFormat(apiKey)) {
         return reply.status(400).send({
           error: 'API Key 格式不正確。Gemini Key 應以 AIza 開頭，長度為 39 字元。',
+        });
+      }
+
+      try {
+        addApiKey(apiKey);
+        return { success: true, suffix: apiKey.slice(-4) };
+      } catch (err: any) {
+        return reply.status(400).send({ error: err.message });
+      }
+    }
+  );
+
+  fastify.post(
+    '/api/settings/ai-runtime/keys',
+    async (request: FastifyRequest<{ Body: { apiKey: string } }>, reply) => {
+      const { apiKey } = request.body as any;
+
+      if (!apiKey || !isValidKeyFormat(apiKey)) {
+        return reply.status(400).send({
+          error: 'API Key 格式不正確。AI Runtime Key 應以 AIza 開頭，長度為 39 字元。',
         });
       }
 
@@ -84,9 +112,55 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
     }
   );
 
+  fastify.post(
+    '/api/settings/ai-runtime/keys/batch',
+    async (request: FastifyRequest<{ Body: { text: string } }>, reply) => {
+      const { text } = request.body as any;
+      if (!text || typeof text !== 'string') {
+        return reply.status(400).send({ error: 'Missing text field' });
+      }
+
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const added: string[] = [];
+      const skipped: string[] = [];
+
+      for (const line of lines) {
+        if (line.startsWith('-')) continue;
+        if (line.startsWith('AIza') && line.length >= 30) {
+          try {
+            addApiKey(line);
+            added.push('...' + line.slice(-4));
+          } catch {
+            skipped.push('...' + line.slice(-4));
+          }
+        }
+      }
+
+      const keys = getKeyList();
+      return { keys, added, skipped, totalAdded: added.length };
+    }
+  );
+
   // Delete an API key
   fastify.delete(
     '/api/settings/api-keys/:suffix',
+    async (
+      request: FastifyRequest<{ Params: { suffix: string } }>,
+      reply
+    ) => {
+      const { suffix } = request.params;
+
+      const removed = removeApiKey(suffix);
+      if (!removed) {
+        return reply.status(404).send({ error: '找不到此 API Key' });
+      }
+
+      return { success: true };
+    }
+  );
+
+  fastify.delete(
+    '/api/settings/ai-runtime/keys/:suffix',
     async (
       request: FastifyRequest<{ Params: { suffix: string } }>,
       reply
@@ -124,6 +198,16 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
     return settings;
   });
 
+  fastify.get('/api/settings/ai-runtime', async () => {
+    const db = getDb();
+    const modelRow = db.prepare("SELECT value FROM settings WHERE key = 'ai_runtime_model'").get() as any;
+    const legacyRow = db.prepare("SELECT value FROM settings WHERE key = 'gemini_model'").get() as any;
+    return {
+      provider: 'ai-core',
+      model: modelRow?.value || legacyRow?.value || 'gemini-2.5-flash',
+    };
+  });
+
   // Batch update settings
   fastify.put(
     '/api/settings',
@@ -153,6 +237,28 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
     }
   );
 
+  fastify.put(
+    '/api/settings/ai-runtime',
+    async (
+      request: FastifyRequest<{ Body: { model?: string } }>,
+      reply
+    ) => {
+      const db = getDb();
+      const { model } = request.body as any;
+
+      if (!model || typeof model !== 'string' || !model.trim()) {
+        return reply.status(400).send({ error: '缺少 model' });
+      }
+
+      db.prepare(
+        `INSERT INTO settings (key, value, updated_at) VALUES ('ai_runtime_model', ?, datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+      ).run(model.trim());
+
+      return { success: true, provider: 'ai-core', model: model.trim() };
+    }
+  );
+
   // Update a single setting
   fastify.put(
     '/api/settings/:key',
@@ -169,9 +275,7 @@ export default async function settingsRoutes(fastify: FastifyInstance) {
 
       // Prevent updating sensitive keys through this endpoint
       if (key.includes('api_key')) {
-        return reply
-          .status(400)
-          .send({ error: '請使用 API Key 管理端點' });
+        return reply.status(400).send({ error: '請使用 AI Runtime Key 管理端點' });
       }
 
       db.prepare(

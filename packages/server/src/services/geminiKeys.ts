@@ -10,6 +10,9 @@ export interface GeminiPoolState {
 
 const DEFAULT_MODEL = 'gemini-2.5-flash';
 
+const AI_KEYS_SETTING_KEYS = ['ai_runtime_api_keys', 'gemini_api_keys', 'gemini_api_key'] as const;
+const AI_MODEL_SETTING_KEYS = ['ai_runtime_model', 'gemini_model'] as const;
+
 let cachedKeys: string[] = [];
 let keyIndex = 0;
 let lastLoadTime = 0;
@@ -56,16 +59,15 @@ export function loadKeys(): string[] {
     keys.push(...envKeys);
   }
 
-  // 2. DB: gemini_api_keys (comma-separated list)
-  const multi = db.prepare("SELECT value FROM settings WHERE key = 'gemini_api_keys'").get() as any;
-  if (multi?.value) {
-    keys.push(...multi.value.split(',').map((k: string) => k.trim()).filter(Boolean));
-  }
-
-  // 3. DB: gemini_api_key (single key — legacy)
-  const single = db.prepare("SELECT value FROM settings WHERE key = 'gemini_api_key'").get() as any;
-  if (single?.value) {
-    keys.push(single.value.trim());
+  // 2. DB: ai_runtime_api_keys / gemini_api_keys / gemini_api_key（兼容舊資料）
+  for (const keyName of AI_KEYS_SETTING_KEYS) {
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(keyName) as any;
+    if (!row?.value) continue;
+    if (keyName === 'gemini_api_key') {
+      keys.push(String(row.value).trim());
+    } else {
+      keys.push(...String(row.value).split(',').map((k: string) => k.trim()).filter(Boolean));
+    }
   }
 
   // Deduplicate while preserving order
@@ -147,8 +149,11 @@ export function getGeminiApiKeyExcluding(failedKey: string): string | null {
 
 /** Get configured model name */
 export function getGeminiModel(): string {
-  const setting = db.prepare("SELECT value FROM settings WHERE key = 'gemini_model'").get() as any;
-  return setting?.value || DEFAULT_MODEL;
+  for (const keyName of AI_MODEL_SETTING_KEYS) {
+    const setting = db.prepare('SELECT value FROM settings WHERE key = ?').get(keyName) as any;
+    if (setting?.value) return setting.value;
+  }
+  return DEFAULT_MODEL;
 }
 
 /** Get all keys count (for diagnostics) */
@@ -221,7 +226,7 @@ export function addApiKey(newKey: string): void {
   if (keys.includes(newKey)) return; // Already exists
   keys.push(newKey);
   db.prepare(
-    "INSERT INTO settings (key, value, updated_at) VALUES ('gemini_api_keys', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')"
+    "INSERT INTO settings (key, value, updated_at) VALUES ('ai_runtime_api_keys', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')"
   ).run(keys.join(','));
   invalidateKeyCache();
 }
@@ -247,7 +252,7 @@ export function removeApiKey(suffix: string): boolean {
     // DB key — remove from stored list
     const filtered = keys.filter(k => k.slice(-4) !== suffix);
     db.prepare(
-      "INSERT INTO settings (key, value, updated_at) VALUES ('gemini_api_keys', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')"
+      "INSERT INTO settings (key, value, updated_at) VALUES ('ai_runtime_api_keys', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')"
     ).run(filtered.join(','));
   }
 

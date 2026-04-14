@@ -49,7 +49,7 @@ function formatTokens(n: number): string {
   return n.toString();
 }
 
-/** 從多行文字中解析出看起來像 API Key 的行（忽略空行與 -label 標籤行） */
+/** 從多行文字中解析出看起來像 AI Runtime Key 的行（忽略空行與 -label 標籤行） */
 function parseKeys(text: string): string[] {
   return text
     .split('\n')
@@ -77,14 +77,14 @@ function ImportSection({ onImported }: { onImported: () => void }) {
 
     try {
       if (keys.length === 1) {
-        await api.post('/api/settings/api-keys', { apiKey: keys[0] });
-        setResult('成功匯入 1 把 Key');
+        await api.post('/api/settings/ai-runtime/keys', { apiKey: keys[0] });
+        setResult('成功匯入 1 把 AI Runtime Key');
       } else {
         const res = await api.post<BatchImportResult>(
-          '/api/settings/api-keys/batch',
+          '/api/settings/ai-runtime/keys/batch',
           { text },
         );
-        setResult(`成功匯入 ${res.totalAdded} 把 Key` + (res.skipped.length > 0 ? `，跳過 ${res.skipped.length} 把` : ''));
+        setResult(`成功匯入 ${res.totalAdded} 把 AI Runtime Key` + (res.skipped.length > 0 ? `，跳過 ${res.skipped.length} 把` : ''));
       }
       setText('');
       onImported();
@@ -99,7 +99,7 @@ function ImportSection({ onImported }: { onImported: () => void }) {
     <div className="rounded-lg border border-gray-200 bg-white p-6">
       <div className="mb-4 flex items-center gap-2">
         <Plus size={20} className="text-gray-600" />
-        <h2 className="text-lg font-semibold text-gray-800">匯入 API Key</h2>
+        <h2 className="text-lg font-semibold text-gray-800">匯入 AI Runtime Key</h2>
       </div>
 
       <textarea
@@ -109,7 +109,7 @@ function ImportSection({ onImported }: { onImported: () => void }) {
           setResult(null);
           setError('');
         }}
-        placeholder={`貼上 API Key（支援批量匯入）\n\n-label（標籤行會被忽略）\nAIzaSy...\nAIzaSy...`}
+        placeholder={`貼上 AI Runtime Key（支援批量匯入）\n\n-label（標籤行會被忽略）\nAIzaSy...\nAIzaSy...`}
         rows={6}
         className="mb-3 w-full rounded-md border border-gray-300 bg-gray-50 px-4 py-3 font-mono text-sm leading-relaxed text-gray-800 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
       />
@@ -118,7 +118,7 @@ function ImportSection({ onImported }: { onImported: () => void }) {
         <span className="text-sm text-gray-500">
           {detectedCount > 0
             ? `偵測到 ${detectedCount} 把 Key`
-            : '尚未偵測到 Key'}
+            : '尚未偵測到 AI Runtime Key'}
         </span>
 
         <button
@@ -176,7 +176,7 @@ function KeyListSection({
     setDeleting(suffix);
     setError('');
     try {
-      await api.delete(`/api/settings/api-keys/${suffix}`);
+        await api.delete(`/api/settings/ai-runtime/keys/${suffix}`);
       setDeleteConfirm(null);
       onDeleted();
     } catch (err) {
@@ -190,7 +190,7 @@ function KeyListSection({
     <div className="rounded-lg border border-gray-200 bg-white p-6">
       <div className="mb-4 flex items-center gap-2">
         <Key size={20} className="text-gray-600" />
-        <h2 className="text-lg font-semibold text-gray-800">API Key 列表</h2>
+        <h2 className="text-lg font-semibold text-gray-800">AI Runtime Key 列表</h2>
         <span className="ml-auto rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
           {keys.length} 把
         </span>
@@ -210,7 +210,7 @@ function KeyListSection({
         </div>
       ) : keys.length === 0 ? (
         <p className="py-8 text-center text-sm text-gray-500">
-          尚未設定任何 API Key，請在上方匯入
+          尚未設定任何 AI Runtime Key，請在上方匯入
         </p>
       ) : (
         <div className="overflow-x-auto rounded-md border border-gray-200">
@@ -748,12 +748,18 @@ export default function SettingsPage() {
   const [keys, setKeys] = useState<ApiKeyItem[]>([]);
   const [usage, setUsage] = useState<ApiKeysResponse['usage'] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [model, setModel] = useState('gemini-2.5-flash');
+  const [savingModel, setSavingModel] = useState(false);
 
   const fetchData = async () => {
     try {
-      const data = await api.get<ApiKeysResponse>('/api/settings/api-keys');
+      const [data, runtime] = await Promise.all([
+        api.get<ApiKeysResponse>('/api/settings/ai-runtime/keys'),
+        api.get<{ provider: string; model: string }>('/api/settings/ai-runtime'),
+      ]);
       setKeys(data.keys);
       setUsage(data.usage);
+      setModel(runtime.model || 'gemini-2.5-flash');
     } catch {
       // 靜默處理，各區塊自行顯示空狀態
     } finally {
@@ -768,6 +774,43 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <h1 className="text-2xl font-bold text-gray-800">系統設定</h1>
+      <div className="rounded-lg border border-blue-200 bg-white p-6">
+        <div className="mb-4 flex items-center gap-2">
+          <Key size={20} className="text-blue-600" />
+          <h2 className="text-lg font-semibold text-gray-800">AI Runtime</h2>
+        </div>
+        <div className="grid gap-4 md:grid-cols-[160px_1fr_auto] md:items-end">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Provider</label>
+            <input value="ai-core" disabled className="w-full rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-500" />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Model</label>
+            <input
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder="gemini-2.5-flash"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              setSavingModel(true);
+              try {
+                await api.put('/api/settings/ai-runtime', { model });
+              } finally {
+                setSavingModel(false);
+              }
+            }}
+            disabled={savingModel || !model.trim()}
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {savingModel ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            儲存 Runtime
+          </button>
+        </div>
+      </div>
       <ImportSection onImported={fetchData} />
       <KeyListSection keys={keys} loading={loading} onDeleted={fetchData} />
       <UsageSection usage={usage} />
