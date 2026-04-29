@@ -131,3 +131,32 @@ URL 探索模式：
 | Gitea 整合 | ✅ 完成 |
 | Slack 通知 | ✅ 完成 |
 | API Key Pool（輪替 + 429 retry） | ✅ 完成 |
+
+## 部署
+
+### 本機開發
+
+```bash
+pnpm install
+cp .env.example .env       # 填入 GEMINI_API_KEY、JWT_SECRET
+pnpm dev                   # concurrently: server (3001) + web (3000)
+```
+
+### Docker（Production）
+
+```bash
+docker compose up -d       # 對外 port 8223 → nginx → Fastify (3001) / Next.js (3002)
+# image: kevin950805/auto-spec-test
+```
+
+資料持久化：`./data:/app/packages/server/data`（SQLite db）。
+
+### CI/CD
+
+- **GitHub Actions**：`docker-publish.yml` 推 Docker Hub、`deploy.yml` 透過 Tailscale SSH 部署
+- **Gitea Actions**：`docker-build.yaml` 推內部 registry 並同步 ArgoCD
+
+### URL
+
+- Repo：<https://github.com/chuangkevin/auto-spec-test>
+- Image：`kevin950805/auto-spec-test`
